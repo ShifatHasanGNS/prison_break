@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://phase2resultstscn"]
+
+[ext_resource type="Script" path="res://scenes/results_screen.gd" id="1_results"]
+
+[node name="ResultsScreen" type="Node2D"]
+script = ExtResource("1_results")

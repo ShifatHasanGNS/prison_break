@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="MctsConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ai/mcts_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+max_iterations = 200
+rollout_depth = 10
+low_danger_bias = 0.7
+exploration_constant = 1.414

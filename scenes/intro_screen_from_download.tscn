@@ -1,0 +1,41 @@
+[gd_scene load_steps=3 format=3 uid="uid://prison_break_intro"]
+
+[ext_resource type="VideoStream" path="res://prison_break_intro.ogv" id="1_intro_video"]
+
+[sub_resource type="GDScript" id="2_intro_ctrl"]
+script/source = "extends Control
+
+signal intro_finished
+
+@onready var player: VideoStreamPlayer = $VideoStreamPlayer
+
+func _ready() -> void:
+	player.stream = load(\"res://prison_break_intro.ogv\")
+	player.finished.connect(_on_finished)
+	player.play()
+
+func _on_finished() -> void:
+	emit_signal(\"intro_finished\")
+	# Replace with your main menu / game scene:
+	get_tree().change_scene_to_file(\"res://scenes/main_menu.tscn\")
+
+func _input(event: InputEvent) -> void:
+	# Allow player to skip intro with any key / click
+	if event.is_action_pressed(\"ui_accept\") or event.is_action_pressed(\"ui_cancel\"):
+		player.stop()
+		_on_finished()
+"
+
+[node name="IntroScreen" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+layout_mode = 3
+script = SubResource("2_intro_ctrl")
+
+[node name="VideoStreamPlayer" type="VideoStreamPlayer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+layout_mode = 1
+stream = ExtResource("1_intro_video")
+autoplay = false
+expand = true

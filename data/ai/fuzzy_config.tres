@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="FuzzyConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ai/fuzzy_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+dist_close = 3.0
+dist_medium = 8.0
+dist_far = 15.0
+vis_low = 0.2
+vis_medium = 0.5
+vis_high = 0.8
+noise_quiet = 2.0
+noise_medium = 5.0
+noise_loud = 8.0
+threat_low = 2.0
+threat_medium = 5.0
+threat_high = 8.0
+w_patrol = 1.0
+w_investigate = 1.2
+w_chase = 1.5
+w_intercept = 1.3

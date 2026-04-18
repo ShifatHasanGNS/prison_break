@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="MinimaxConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ai/minimax_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+max_depth = 4
+cache_cap = 10000
+w_exit = 3.0
+w_risk = 2.0
+w_opp = 1.5
+w_stam = 0.5
