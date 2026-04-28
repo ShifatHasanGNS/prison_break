@@ -1,7 +1,7 @@
 extends Node
 class_name GridEngine
 
-const WIDTH: int = 20
+const WIDTH: int = 28
 const HEIGHT: int = 20
 
 var _tiles: Dictionary = {}
@@ -15,6 +15,24 @@ func init(config: Dictionary = {}) -> void:
 
 func load_generated(tiles: Dictionary) -> void:
 	_tiles = tiles
+	if _tiles.is_empty():
+		_width = WIDTH
+		_height = HEIGHT
+		return
+
+	var min_x: int =  1 << 30
+	var min_y: int =  1 << 30
+	var max_x: int = -(1 << 30)
+	var max_y: int = -(1 << 30)
+	for pos_key in _tiles.keys():
+		var pos: Vector2i = pos_key
+		min_x = mini(min_x, pos.x)
+		min_y = mini(min_y, pos.y)
+		max_x = maxi(max_x, pos.x)
+		max_y = maxi(max_y, pos.y)
+
+	_width = maxi(1, max_x - min_x + 1)
+	_height = maxi(1, max_y - min_y + 1)
 
 func get_tile(pos: Vector2i) -> GridTileData:
 	return _tiles.get(pos, null)

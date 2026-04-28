@@ -1,0 +1,2445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRISON BREAK — SURVEILLANCE COMMAND CENTER</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&display=swap');
+
+  :root {
+    --bg-deep: #050810;
+    --bg-mid: #080d1a;
+    --bg-panel: #0b1120;
+    --border: #1a2a44;
+    --border-glow: #1e3a5f;
+    --accent-cyan: #00e5ff;
+    --accent-orange: #ff6d00;
+    --accent-red: #ff1744;
+    --accent-green: #00e676;
+    --accent-yellow: #ffd740;
+    --text-primary: #cce8ff;
+    --text-dim: #4a7fa5;
+    --police-blue: #1a2a5e;
+    --prisoner-blue: #1565c0;
+    --prisoner-orange: #e65100;
+    --wall-dark: #0f1922;
+    --wall-mid: #162232;
+    --cell-bg: #0a1520;
+    --floor-light: #1c2d40;
+    --floor-dark: #111e2e;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: 'Rajdhani', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+    background-image:
+      radial-gradient(ellipse at 10% 20%, rgba(0,100,200,0.04) 0%, transparent 50%),
+      radial-gradient(ellipse at 90% 80%, rgba(255,50,0,0.03) 0%, transparent 50%),
+      repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(0,180,255,0.015) 39px, rgba(0,180,255,0.015) 40px),
+      repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(0,180,255,0.015) 39px, rgba(0,180,255,0.015) 40px);
+  }
+
+  /* HEADER */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    background: linear-gradient(180deg, rgba(0,20,50,0.95) 0%, rgba(5,12,25,0.9) 100%);
+    border-bottom: 1px solid var(--border-glow);
+    position: relative;
+    z-index: 100;
+  }
+  .header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-cyan), var(--accent-orange), var(--accent-cyan), transparent);
+    animation: scanBar 4s linear infinite;
+  }
+  @keyframes scanBar {
+    0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; }
+  }
+
+  .logo-area {
+    display: flex; align-items: center; gap: 14px;
+  }
+  .logo-icon {
+    width: 42px; height: 42px;
+    background: linear-gradient(135deg, var(--accent-cyan) 0%, #0050aa 100%);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    animation: pulse-hex 2s ease-in-out infinite;
+  }
+  @keyframes pulse-hex {
+    0%,100% { box-shadow: 0 0 15px var(--accent-cyan); }
+    50% { box-shadow: 0 0 30px var(--accent-cyan), 0 0 60px rgba(0,229,255,0.3); }
+  }
+  .title-main {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: 4px;
+    color: white;
+    text-shadow: 0 0 20px var(--accent-cyan);
+  }
+  .title-sub {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 3px;
+    margin-top: 2px;
+  }
+
+  .header-stats {
+    display: flex; gap: 20px; align-items: center;
+  }
+  .hstat {
+    text-align: center;
+  }
+  .hstat-val {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .hstat-lbl {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+  .alert-banner {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--accent-red);
+    border: 1px solid var(--accent-red);
+    padding: 4px 12px;
+    animation: blink-border 1s step-end infinite;
+    letter-spacing: 2px;
+  }
+  @keyframes blink-border {
+    0%,100% { border-color: var(--accent-red); color: var(--accent-red); }
+    50% { border-color: #660000; color: #660000; }
+  }
+  .time-display {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 24px;
+    color: var(--accent-cyan);
+    text-shadow: 0 0 15px var(--accent-cyan);
+    letter-spacing: 3px;
+  }
+
+  /* MAIN LAYOUT */
+  .main-layout {
+    display: grid;
+    grid-template-columns: 220px 1fr 220px;
+    grid-template-rows: 1fr;
+    height: calc(100vh - 65px);
+    gap: 0;
+    overflow: hidden;
+  }
+
+  /* PANELS */
+  .panel {
+    background: linear-gradient(180deg, #0b1120 0%, #080e1c 100%);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+  }
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    width: 2px;
+    background: linear-gradient(180deg, transparent, rgba(0,229,255,0.15), transparent);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .panel:last-child { border-right: none; border-left: 1px solid var(--border); }
+  .panel:last-child::before {
+    left: auto; right: 0;
+    background: linear-gradient(180deg, transparent, rgba(255,23,68,0.1), transparent);
+  }
+
+  .panel-header {
+    padding: 8px 14px;
+    background: linear-gradient(90deg, rgba(0,60,120,0.4) 0%, transparent 100%);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(5px);
+  }
+  .panel-header-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent-cyan);
+    box-shadow: 0 0 8px var(--accent-cyan);
+    animation: dot-pulse 2s ease-in-out infinite;
+  }
+  @keyframes dot-pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .panel-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: var(--accent-cyan);
+    text-transform: uppercase;
+  }
+
+  /* CC CAMERAS */
+  .cameras-section {
+    padding: 10px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .camera-feed {
+    position: relative;
+    border: 1px solid var(--border-glow);
+    background: #000;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .camera-feed canvas {
+    display: block;
+    width: 100%;
+  }
+  .cam-label {
+    position: absolute;
+    top: 6px; left: 6px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--accent-green);
+    text-shadow: 0 0 8px var(--accent-green);
+    background: rgba(0,0,0,0.6);
+    padding: 2px 6px;
+    letter-spacing: 1px;
+  }
+  .cam-rec {
+    position: absolute;
+    top: 6px; right: 6px;
+    display: flex; align-items: center; gap: 4px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--accent-red);
+  }
+  .rec-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent-red);
+    animation: dot-pulse 1s step-end infinite;
+  }
+  .cam-timestamp {
+    position: absolute;
+    bottom: 6px; right: 6px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    color: rgba(255,255,255,0.5);
+  }
+  .cam-scanline {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: rgba(0,229,255,0.15);
+    animation: scanline 3s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes scanline { from{top:-2px} to{top:100%} }
+
+  /* AGENT LIST */
+  .agent-list { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .agent-card {
+    background: linear-gradient(135deg, rgba(10,20,40,0.9) 0%, rgba(5,15,30,0.9) 100%);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 8px 10px;
+    display: flex; align-items: center; gap: 10px;
+    transition: border-color 0.3s;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .agent-card::before {
+    content: '';
+    position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  }
+  .agent-card.police::before { background: var(--accent-cyan); }
+  .agent-card.prisoner-blue::before { background: #4fc3f7; }
+  .agent-card.prisoner-red::before { background: var(--accent-orange); }
+  .agent-card:hover { border-color: var(--accent-cyan); }
+  .agent-card.active { border-color: var(--accent-yellow); background: rgba(255,215,64,0.05); }
+
+  .agent-sprite-mini {
+    width: 36px; height: 46px; flex-shrink: 0;
+  }
+  .agent-info { flex: 1; min-width: 0; }
+  .agent-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+  .agent-status {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .agent-badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    padding: 2px 5px;
+    border-radius: 2px;
+    letter-spacing: 1px;
+  }
+  .badge-patrol { background: rgba(0,229,255,0.15); color: var(--accent-cyan); border: 1px solid rgba(0,229,255,0.3); }
+  .badge-escape { background: rgba(255,109,0,0.15); color: var(--accent-orange); border: 1px solid rgba(255,109,0,0.3); }
+  .badge-captured { background: rgba(255,23,68,0.15); color: var(--accent-red); border: 1px solid rgba(255,23,68,0.3); animation: blink-border 2s step-end infinite; }
+
+  /* MAIN MAP */
+  .map-section {
+    position: relative;
+    background: #020810;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+  .map-toolbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 12px;
+    background: rgba(5,12,25,0.97);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 5;
+  }
+  .map-toolbar::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0,229,255,0.4), transparent);
+  }
+  .map-btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    letter-spacing: 2px;
+    padding: 5px 12px;
+    background: rgba(0,50,100,0.3);
+    border: 1px solid var(--border-glow);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    position: relative;
+    overflow: hidden;
+  }
+  .map-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, transparent 40%, rgba(0,229,255,0.05) 100%);
+  }
+  .map-btn:hover, .map-btn.active {
+    background: rgba(0,229,255,0.1);
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+    box-shadow: 0 0 12px rgba(0,229,255,0.15), inset 0 0 8px rgba(0,229,255,0.05);
+    text-shadow: 0 0 8px var(--accent-cyan);
+  }
+  .map-zoom {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-left: auto;
+    letter-spacing: 1px;
+  }
+  #mapCanvas {
+    flex: 1;
+    display: block;
+    cursor: crosshair;
+    width: 100% !important;
+  }
+
+
+  /* RIGHT PANEL */
+  .event-log {
+    padding: 8px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .event-item {
+    padding: 6px 8px;
+    border-left: 2px solid transparent;
+    background: rgba(5,15,30,0.8);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    line-height: 1.5;
+    animation: fadeInUp 0.3s ease;
+  }
+  @keyframes fadeInUp { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+  .event-item.ev-alert { border-color: var(--accent-red); }
+  .event-item.ev-info { border-color: var(--accent-cyan); }
+  .event-item.ev-warning { border-color: var(--accent-yellow); }
+  .event-time { color: var(--text-dim); margin-right: 6px; }
+  .event-msg { color: var(--text-primary); }
+
+  .section-divider {
+    margin: 6px 10px;
+    border: none;
+    border-top: 1px solid var(--border);
+  }
+
+  /* STATS BARS */
+  .stat-item {
+    padding: 8px 12px;
+  }
+  .stat-label {
+    display: flex; justify-content: space-between;
+    font-size: 10px; letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .stat-value { color: var(--text-primary); font-weight: 600; }
+  .stat-bar-bg {
+    height: 4px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .stat-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 1s ease;
+  }
+
+  /* MINI MAP LEGEND */
+  .legend {
+    padding: 8px 12px;
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 10px; color: var(--text-dim);
+  }
+  .legend-dot {
+    width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0;
+  }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-track { background: var(--bg-deep); }
+  ::-webkit-scrollbar-thumb { background: var(--border-glow); border-radius: 2px; }
+
+  /* PANEL HEADERS - METALLIC INTENSE */
+  .panel-header {
+    padding: 7px 12px;
+    background: linear-gradient(90deg, rgba(0,60,120,0.5) 0%, rgba(0,30,70,0.2) 100%);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+  }
+  .panel-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 12px; right: 12px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+    opacity: 0.3;
+  }
+  .panel-header-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent-cyan);
+    box-shadow: 0 0 8px var(--accent-cyan);
+    animation: dot-pulse 2s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+  @keyframes dot-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.8)} }
+  .panel-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: var(--accent-cyan);
+    text-transform: uppercase;
+  }
+
+  /* STAT BARS - ANIMATED */
+  .stat-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 1.2s cubic-bezier(0.4,0,0.2,1);
+    position: relative;
+    overflow: hidden;
+  }
+  .stat-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%; right: 0; bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    animation: bar-shimmer 2s ease-in-out infinite;
+  }
+  @keyframes bar-shimmer {
+    0% { left: -100%; }
+    60%,100% { left: 100%; }
+  }
+
+  /* SCREEN VIGNETTE OVERLAY */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 50%, transparent 60%, rgba(0,0,0,0.5) 100%);
+    z-index: 9999;
+  }
+
+  /* SCREEN FLICKER */
+  @keyframes screen-flicker {
+    0%,98%,100% { opacity: 1; }
+    99% { opacity: 0.97; }
+  }
+  body { animation: screen-flicker 8s infinite; }
+
+  /* CAMERA FEED UPGRADES */
+  .camera-feed {
+    position: relative;
+    border: 1px solid rgba(0,229,255,0.25);
+    background: #000;
+    border-radius: 2px;
+    overflow: hidden;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.8), 0 0 10px rgba(0,229,255,0.05);
+  }
+  .camera-feed::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 3px);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* AGENT CARD UPGRADES */
+  .agent-card {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px;
+    background: rgba(5,15,35,0.8);
+    border: 1px solid transparent;
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+  .agent-card:hover {
+    background: rgba(0,50,100,0.3);
+    border-color: rgba(0,229,255,0.2);
+    transform: translateX(2px);
+  }
+  .agent-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 2px;
+  }
+  .agent-card.police::before { background: var(--accent-cyan); box-shadow: 0 0 6px var(--accent-cyan); }
+  .agent-card.prisoner-blue::before { background: #4fc3f7; box-shadow: 0 0 6px #4fc3f7; }
+  .agent-card.prisoner-red::before { background: var(--accent-orange); box-shadow: 0 0 6px var(--accent-orange); }
+
+  .agent-badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    padding: 2px 5px;
+    letter-spacing: 1px;
+    border-radius: 1px;
+  }
+  .badge-patrol { background: rgba(0,229,255,0.1); color: var(--accent-cyan); border: 1px solid rgba(0,229,255,0.3); }
+  .badge-escape { background: rgba(255,109,0,0.1); color: var(--accent-orange); border: 1px solid rgba(255,109,0,0.3); animation: badge-pulse 1.5s ease-in-out infinite; }
+  .badge-captured { background: rgba(255,23,68,0.1); color: var(--accent-red); border: 1px solid rgba(255,23,68,0.3); }
+  @keyframes badge-pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+  /* MAP CORNER OVERLAY */
+  .map-section::before {
+    content: 'CELL BLOCK A ◆ SECURE FACILITY ◆ MAXIMUM SECURITY ZONE';
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    color: rgba(0,229,255,0.2);
+    letter-spacing: 3px;
+    z-index: 2;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  /* ALERT PULSE for CRITICAL state */
+  @keyframes alert-screen {
+    0%,100% { box-shadow: none; }
+    50% { box-shadow: inset 0 0 40px rgba(255,23,68,0.08); }
+  }
+  .main-layout { animation: alert-screen 3s ease-in-out infinite; }
+
+  /* THREAT GAUGE PANEL */
+  .threat-ring {
+    position: relative;
+  }
+  .threat-ring::after {
+    content: 'ELEVATED SURVEILLANCE PRESSURE';
+    display: block;
+    text-align: center;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    color: rgba(255,100,0,0.5);
+    letter-spacing: 1px;
+    margin-top: 4px;
+  }
+
+  /* SECTOR STATUS ICONS */
+  .sector-status-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 12px;
+    font-size: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .sector-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .sector-name { color: var(--text-dim); flex: 1; letter-spacing: 1px; }
+  .sector-val { font-family: 'Share Tech Mono', monospace; font-size: 9px; }
+
+  /* TOAST NOTIFICATIONS */
+  #toastContainer {
+    position: fixed;
+    top: 80px; right: 230px;
+    z-index: 1000;
+    display: flex; flex-direction: column; gap: 6px;
+    pointer-events: none;
+  }
+  .toast {
+    background: rgba(5,15,35,0.95);
+    border-left: 3px solid var(--accent-red);
+    padding: 8px 14px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--accent-red);
+    letter-spacing: 1px;
+    animation: toast-in 0.3s ease, toast-out 0.4s ease 3.6s forwards;
+    box-shadow: 0 0 20px rgba(255,23,68,0.2);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid rgba(255,23,68,0.3);
+  }
+  @keyframes toast-in { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+  @keyframes toast-out { to{opacity:0;transform:translateX(20px)} }
+
+  /* HEADER STAT COUNTS */
+  .hstat-val {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    transition: color 0.3s;
+  }
+
+  /* RIVETS ON PANELS */
+  .panel-rivet {
+    position: absolute;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #3a5070, #0a1520);
+    border: 1px solid #1a3050;
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.1);
+  }
+
+  /* ACTIVE ROUTING indicator */
+  .active-routing {
+    padding: 6px 12px 10px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    color: var(--accent-green);
+    letter-spacing: 1px;
+    border-top: 1px solid rgba(0,230,118,0.1);
+    position: relative;
+    overflow: hidden;
+  }
+  .active-routing::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%; right: 0; bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(0,230,118,0.05), transparent);
+    animation: route-scan 2s ease-in-out infinite;
+  }
+  @keyframes route-scan { 0%{left:-100%} 100%{left:100%} }
+
+  /* CORNER DECORATIONS */
+  .corner-deco {
+    position: absolute;
+    width: 16px; height: 16px;
+    opacity: 0.5;
+  }
+  .corner-deco.tl { top: 0; left: 0; border-top: 2px solid var(--accent-cyan); border-left: 2px solid var(--accent-cyan); }
+  .corner-deco.tr { top: 0; right: 0; border-top: 2px solid var(--accent-cyan); border-right: 2px solid var(--accent-cyan); }
+  .corner-deco.bl { bottom: 0; left: 0; border-bottom: 2px solid var(--accent-cyan); border-left: 2px solid var(--accent-cyan); }
+  .corner-deco.br { bottom: 0; right: 0; border-bottom: 2px solid var(--accent-cyan); border-right: 2px solid var(--accent-cyan); }
+
+  .threat-meter {
+    padding: 8px 12px;
+  }
+  .threat-ring {
+    display: flex; justify-content: center; align-items: center;
+    padding: 8px 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="logo-area">
+    <div class="logo-icon">🏛</div>
+    <div>
+      <div class="title-main">PRISON BREAK</div>
+      <div class="title-sub">SURVEILLANCE COMMAND CENTER — MAXIMUM SECURITY</div>
+    </div>
+  </div>
+  <div class="header-stats">
+    <div class="hstat">
+      <div class="hstat-val" style="color:var(--accent-cyan)" id="h-police">6</div>
+      <div class="hstat-lbl">Officers</div>
+    </div>
+    <div style="width:1px;height:30px;background:var(--border)"></div>
+    <div class="hstat">
+      <div class="hstat-val" style="color:#4fc3f7" id="h-blue">4</div>
+      <div class="hstat-lbl">Blue Team</div>
+    </div>
+    <div style="width:1px;height:30px;background:var(--border)"></div>
+    <div class="hstat">
+      <div class="hstat-val" style="color:var(--accent-orange)" id="h-red">3</div>
+      <div class="hstat-lbl">Red Team</div>
+    </div>
+    <div style="width:1px;height:30px;background:var(--border)"></div>
+    <div class="alert-banner" id="alert-text">⚠ ESCAPE ALERT ACTIVE</div>
+  </div>
+  <div class="time-display" id="clock">--:--:--</div>
+</div>
+
+<!-- TOAST NOTIFICATIONS -->
+<div id="toastContainer"></div>
+
+<!-- MAIN LAYOUT -->
+<div class="main-layout">
+
+  <!-- LEFT PANEL -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-header-dot"></div>
+      <div class="panel-title">CC CAMERAS</div>
+    </div>
+    <div class="cameras-section">
+      <!-- Camera 1 -->
+      <div class="camera-feed" style="height:160px">
+        <canvas id="cam1" width="260" height="160"></canvas>
+        <div class="cam-label">CAM-01 / CELL BLOCK A</div>
+        <div class="cam-rec"><div class="rec-dot"></div>REC</div>
+        <div class="cam-timestamp" id="camtime1">23:14:07</div>
+        <div class="cam-scanline"></div>
+        <div class="corner-deco tl"></div>
+        <div class="corner-deco tr"></div>
+        <div class="corner-deco bl"></div>
+        <div class="corner-deco br"></div>
+      </div>
+      <!-- Camera 2 -->
+      <div class="camera-feed" style="height:160px">
+        <canvas id="cam2" width="260" height="160"></canvas>
+        <div class="cam-label">CAM-02 / MAIN CORRIDOR</div>
+        <div class="cam-rec"><div class="rec-dot"></div>REC</div>
+        <div class="cam-timestamp" id="camtime2">23:14:07</div>
+        <div class="cam-scanline" style="animation-delay:1.5s"></div>
+        <div class="corner-deco tl"></div>
+        <div class="corner-deco tr"></div>
+        <div class="corner-deco bl"></div>
+        <div class="corner-deco br"></div>
+      </div>
+    </div>
+
+    <div class="panel-header" style="margin-top:4px">
+      <div class="panel-header-dot" style="background:var(--accent-orange)"></div>
+      <div class="panel-title" style="color:var(--accent-orange)">AGENTS ON MAP</div>
+    </div>
+    <div class="agent-list" id="agentList">
+      <!-- Generated by JS -->
+    </div>
+
+    <div class="panel-header" style="margin-top:4px">
+      <div class="panel-header-dot" style="background:var(--accent-green)"></div>
+      <div class="panel-title" style="color:var(--accent-green)">SECTOR STATUS</div>
+    </div>
+    <div class="sector-status-item">
+      <div class="sector-dot" style="background:var(--accent-red);box-shadow:0 0 6px var(--accent-red)"></div>
+      <span class="sector-name">EXIT ROTATOR</span>
+      <span class="sector-val" style="color:var(--accent-red)">2.6s</span>
+    </div>
+    <div class="sector-status-item">
+      <div class="sector-dot" style="background:var(--accent-cyan);box-shadow:0 0 6px var(--accent-cyan)"></div>
+      <span class="sector-name">DETECTION GRID</span>
+      <span class="sector-val" style="color:var(--accent-cyan)">2 ONLINE</span>
+    </div>
+    <div class="sector-status-item">
+      <div class="sector-dot" style="background:var(--accent-yellow);box-shadow:0 0 6px var(--accent-yellow)"></div>
+      <span class="sector-name">HAZARD CONTAIN</span>
+      <span class="sector-val" style="color:var(--accent-yellow)">5 FIRES</span>
+    </div>
+    <div class="sector-status-item">
+      <div class="sector-dot" style="background:var(--accent-cyan)"></div>
+      <span class="sector-name">K9 RESPONSE</span>
+      <span class="sector-val" style="color:var(--accent-cyan)">PATROL</span>
+    </div>
+    <div class="stat-item" style="padding-top:6px">
+      <div class="stat-label"><span>CELL BLOCK A</span><span class="stat-value" style="color:var(--accent-red)">BREACH</span></div>
+      <div class="stat-bar-bg"><div class="stat-bar-fill" style="width:85%;background:var(--accent-red)"></div></div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label"><span>PERIMETER</span><span class="stat-value" style="color:var(--accent-yellow)">WARNING</span></div>
+      <div class="stat-bar-bg"><div class="stat-bar-fill" style="width:60%;background:var(--accent-yellow)"></div></div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label"><span>CONTROL ROOM</span><span class="stat-value" style="color:var(--accent-green)">SECURE</span></div>
+      <div class="stat-bar-bg"><div class="stat-bar-fill" style="width:20%;background:var(--accent-green)"></div></div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label"><span>MAIN GATE</span><span class="stat-value" style="color:var(--accent-red)">LOCKDOWN</span></div>
+      <div class="stat-bar-bg"><div class="stat-bar-fill" style="width:95%;background:var(--accent-red)"></div></div>
+    </div>
+    <div class="active-routing">
+      ◆ ACTIVE ROUTING — MAP CENTERED FOR WIDESCREEN COMMAND COVER
+    </div>
+  </div>
+
+  <!-- MAP CENTER -->
+  <div class="map-section">
+    <div class="map-toolbar">
+      <button class="map-btn active">LIVE FEED</button>
+      <button class="map-btn">HEAT MAP</button>
+      <button class="map-btn">PATROL ROUTES</button>
+      <button class="map-btn">ALERTS</button>
+      <span class="map-zoom" id="mapStatus">TRACKING: 13 ENTITIES — ZONE: MAXIMUM SECURITY</span>
+    </div>
+    <canvas id="mapCanvas"></canvas>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-header-dot" style="background:var(--accent-red)"></div>
+      <div class="panel-title" style="color:var(--accent-red)">INCIDENT LOG</div>
+    </div>
+    <div class="event-log" id="eventLog"></div>
+
+
+    <div class="panel-header" style="margin-top:4px">
+      <div class="panel-header-dot" style="background:var(--accent-yellow)"></div>
+      <div class="panel-title" style="color:var(--accent-yellow)">THREAT LEVEL</div>
+    </div>
+    <div class="threat-meter">
+      <div class="threat-ring">
+        <canvas id="threatCanvas" width="150" height="150"></canvas>
+        <div style="text-align:center;font-family:'Share Tech Mono',monospace;font-size:8px;color:rgba(255,100,0,0.5);letter-spacing:1px;margin-top:2px">ELEVATED SURVEILLANCE PRESSURE</div>
+        <div style="text-align:center;font-size:9px;color:var(--text-dim);letter-spacing:1px;margin-top:2px">Visible targets 0 · Cameras hid 0</div>
+      </div>
+    </div>
+
+    <div class="panel-header" style="margin-top:4px">
+      <div class="panel-header-dot"></div>
+      <div class="panel-title">MAP LEGEND</div>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#1e3a6e;border:1px solid #4a7fa5"></div>Cell Blocks</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#0a1e30"></div>Corridors</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1a0e00;border:1px solid #553300"></div>Courtyard</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-cyan);border-radius:50%"></div>Police Officer</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1565c0;border-radius:50%"></div>Prisoner (Blue)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-orange);border-radius:50%"></div>Prisoner (Red)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-green);border-radius:50%"></div>CC Camera</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-red)"></div>Alert Zone</div>
+    </div>
+
+    <div class="panel-header" style="margin-top:4px">
+      <div class="panel-header-dot" style="background:var(--accent-green)"></div>
+      <div class="panel-title" style="color:var(--accent-green)">SYSTEM STATUS</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label"><span>DETECTION GRID</span><span class="stat-value" style="color:var(--accent-green)">ONLINE</span></div>
+      <div class="stat-bar-bg"><div class="stat-bar-fill" style="width:98%;background:var(--accent-green)"></div></div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label"><span>COMM NETWORK</span><span class="stat-value" style="color:var(--accent-green)">ACTIVE</span></div>
+      <div class="stat-bar-bg"><div class="stat-bar-fill" style="width:92%;background:var(--accent-green)"></div></div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label"><span>LOCK SYSTEMS</span><span class="stat-value" style="color:var(--accent-yellow)">PARTIAL</span></div>
+      <div class="stat-bar-bg"><div class="stat-bar-fill" style="width:55%;background:var(--accent-yellow)"></div></div>
+    </div>
+    <div class="stat-item" style="padding-bottom:12px">
+      <div class="stat-label"><span>GUARD RESPONSE</span><span class="stat-value" style="color:var(--accent-red)">CRITICAL</span></div>
+      <div class="stat-bar-bg"><div class="stat-bar-fill" style="width:30%;background:var(--accent-red)"></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CLOCK
+// ============================================================
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    String(now.getHours()).padStart(2,'0') + ':' +
+    String(now.getMinutes()).padStart(2,'0') + ':' +
+    String(now.getSeconds()).padStart(2,'0');
+  const ts = String(now.getHours()).padStart(2,'0') + ':' +
+    String(now.getMinutes()).padStart(2,'0') + ':' +
+    String(now.getSeconds()).padStart(2,'0');
+  document.getElementById('camtime1').textContent = ts;
+  document.getElementById('camtime2').textContent = ts;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ============================================================
+// SPRITE DRAWING FUNCTIONS
+// ============================================================
+function drawPolice(ctx, x, y, scale, facing, animFrame) {
+  ctx.save();
+  ctx.translate(x, y);
+  if (facing === 'left') ctx.scale(-1, 1);
+  const s = scale;
+
+  // Walking animation offset
+  const walk = animFrame;
+  const legSwing = Math.sin(walk * 0.15) * 5 * s;
+  const armSwing = Math.sin(walk * 0.15 + Math.PI) * 4 * s;
+  const bodyBob = Math.abs(Math.sin(walk * 0.15)) * 1 * s;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(0, 24*s + bodyBob, 12*s, 3*s, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Back leg
+  ctx.save();
+  ctx.translate(2*s, 10*s + bodyBob);
+  ctx.rotate(-legSwing * 0.08);
+  // Upper leg
+  ctx.fillStyle = '#1a2655';
+  ctx.beginPath();
+  ctx.roundRect(-3*s, 0, 6*s, 8*s, 1);
+  ctx.fill();
+  // Lower leg
+  ctx.translate(0, 7*s);
+  ctx.rotate(Math.max(0, legSwing*0.06));
+  ctx.fillStyle = '#141d45';
+  ctx.beginPath();
+  ctx.roundRect(-2.5*s, 0, 5*s, 7*s, 1);
+  ctx.fill();
+  // Boot
+  ctx.translate(0, 6*s);
+  ctx.fillStyle = '#0a0a0a';
+  ctx.beginPath();
+  ctx.roundRect(-3*s, 0, 7*s, 3*s, 1);
+  ctx.fill();
+  ctx.restore();
+
+  // Front leg
+  ctx.save();
+  ctx.translate(-2*s, 10*s + bodyBob);
+  ctx.rotate(legSwing * 0.08);
+  ctx.fillStyle = '#1e2e68';
+  ctx.beginPath();
+  ctx.roundRect(-3*s, 0, 6*s, 8*s, 1);
+  ctx.fill();
+  ctx.translate(0, 7*s);
+  ctx.rotate(-Math.max(0, -legSwing*0.06));
+  ctx.fillStyle = '#162050';
+  ctx.beginPath();
+  ctx.roundRect(-2.5*s, 0, 5*s, 7*s, 1);
+  ctx.fill();
+  ctx.translate(0, 6*s);
+  ctx.fillStyle = '#0a0a0a';
+  ctx.beginPath();
+  ctx.roundRect(-3.5*s, 0, 7*s, 3*s, 1);
+  ctx.fill();
+  ctx.restore();
+
+  // Torso (tactical vest)
+  const tx = 0, ty = -2*s + bodyBob;
+  // Base shirt
+  ctx.fillStyle = '#1a2655';
+  ctx.beginPath();
+  ctx.roundRect(tx - 8*s, ty, 16*s, 14*s, 2);
+  ctx.fill();
+  // Vest
+  ctx.fillStyle = '#0f1830';
+  ctx.beginPath();
+  ctx.roundRect(tx - 6*s, ty + 1*s, 12*s, 11*s, 1);
+  ctx.fill();
+  // Vest pockets
+  ctx.fillStyle = '#0a1225';
+  ctx.fillRect(tx - 5*s, ty + 3*s, 4*s, 3*s);
+  ctx.fillRect(tx + 1*s, ty + 3*s, 4*s, 3*s);
+  // Badge
+  ctx.fillStyle = '#ffd740';
+  ctx.beginPath();
+  ctx.arc(tx - 4*s, ty + 2*s, 1.5*s, 0, Math.PI*2);
+  ctx.fill();
+
+  // Belt
+  ctx.fillStyle = '#0a0a10';
+  ctx.fillRect(tx - 8*s, ty + 12*s, 16*s, 2.5*s);
+  // Belt buckle
+  ctx.fillStyle = '#334';
+  ctx.fillRect(tx - 2*s, ty + 12*s, 4*s, 2.5*s);
+
+  // Back arm
+  ctx.save();
+  ctx.translate(6*s, ty + 2*s + bodyBob);
+  ctx.rotate(armSwing * 0.08);
+  ctx.fillStyle = '#1a2655';
+  ctx.beginPath();
+  ctx.roundRect(-2.5*s, 0, 5*s, 9*s, 1);
+  ctx.fill();
+  ctx.translate(0, 8*s);
+  ctx.rotate(-Math.max(0, armSwing*0.05));
+  ctx.fillStyle = '#c68642';
+  ctx.beginPath();
+  ctx.roundRect(-2*s, 0, 4*s, 5*s, 1);
+  ctx.fill();
+  ctx.restore();
+
+  // Front arm
+  ctx.save();
+  ctx.translate(-6*s, ty + 2*s + bodyBob);
+  ctx.rotate(-armSwing * 0.08);
+  ctx.fillStyle = '#1e2e68';
+  ctx.beginPath();
+  ctx.roundRect(-2.5*s, 0, 5*s, 9*s, 1);
+  ctx.fill();
+  ctx.translate(0, 8*s);
+  ctx.rotate(Math.max(0, -armSwing*0.05));
+  ctx.fillStyle = '#c68642';
+  ctx.beginPath();
+  ctx.roundRect(-2*s, 0, 4*s, 5*s, 1);
+  ctx.fill();
+  ctx.restore();
+
+  // Neck
+  ctx.fillStyle = '#c68642';
+  ctx.beginPath();
+  ctx.roundRect(-2.5*s, ty - 3*s + bodyBob, 5*s, 4*s, 1);
+  ctx.fill();
+
+  // Head
+  const hy = ty - 14*s + bodyBob;
+  // Hair
+  ctx.fillStyle = '#1a0a00';
+  ctx.beginPath();
+  ctx.ellipse(0, hy, 7.5*s, 6.5*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Face
+  ctx.fillStyle = '#c68642';
+  ctx.beginPath();
+  ctx.ellipse(0, hy + 2*s, 6.5*s, 6*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Eyes
+  ctx.fillStyle = '#1a0a00';
+  ctx.beginPath();
+  ctx.ellipse(-2.5*s, hy + 1*s, 1.2*s, 1*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(2.5*s, hy + 1*s, 1.2*s, 1*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Eye whites
+  ctx.fillStyle = 'white';
+  ctx.beginPath();
+  ctx.ellipse(-2.5*s, hy + 1*s, 0.8*s, 0.7*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(2.5*s, hy + 1*s, 0.8*s, 0.7*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Stern expression (mouth)
+  ctx.strokeStyle = '#7a4020';
+  ctx.lineWidth = 0.8*s;
+  ctx.beginPath();
+  ctx.moveTo(-2*s, hy + 4*s);
+  ctx.lineTo(2*s, hy + 4*s);
+  ctx.stroke();
+  // Eyebrows (stern)
+  ctx.strokeStyle = '#1a0a00';
+  ctx.lineWidth = 1*s;
+  ctx.beginPath();
+  ctx.moveTo(-4*s, hy - 1.5*s);
+  ctx.lineTo(-1*s, hy - 0.5*s);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(4*s, hy - 1.5*s);
+  ctx.lineTo(1*s, hy - 0.5*s);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawPrisonerBlue(ctx, x, y, scale, facing, animFrame) {
+  ctx.save();
+  ctx.translate(x, y);
+  if (facing === 'left') ctx.scale(-1, 1);
+  const s = scale;
+  const walk = animFrame;
+  const legSwing = Math.sin(walk * 0.15) * 5 * s;
+  const armSwing = Math.sin(walk * 0.15 + Math.PI) * 4 * s;
+  const bodyBob = Math.abs(Math.sin(walk * 0.15)) * 1 * s;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(0, 23*s + bodyBob, 11*s, 2.5*s, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Back leg
+  ctx.save();
+  ctx.translate(2*s, 10*s + bodyBob);
+  ctx.rotate(-legSwing * 0.08);
+  ctx.fillStyle = '#1565c0';
+  ctx.beginPath();
+  ctx.roundRect(-3*s, 0, 6*s, 8*s, 1);
+  ctx.fill();
+  ctx.translate(0, 7*s);
+  ctx.rotate(Math.max(0, legSwing*0.06));
+  ctx.fillStyle = '#0d47a1';
+  ctx.beginPath();
+  ctx.roundRect(-2.5*s, 0, 5*s, 7*s, 1);
+  ctx.fill();
+  ctx.translate(0, 6*s);
+  ctx.fillStyle = '#111';
+  ctx.beginPath();
+  ctx.roundRect(-3*s, 0, 7*s, 3*s, 1);
+  ctx.fill();
+  ctx.restore();
+
+  // Front leg
+  ctx.save();
+  ctx.translate(-2*s, 10*s + bodyBob);
+  ctx.rotate(legSwing * 0.08);
+  ctx.fillStyle = '#1976d2';
+  ctx.beginPath();
+  ctx.roundRect(-3*s, 0, 6*s, 8*s, 1);
+  ctx.fill();
+  ctx.translate(0, 7*s);
+  ctx.rotate(-Math.max(0, -legSwing*0.06));
+  ctx.fillStyle = '#1565c0';
+  ctx.beginPath();
+  ctx.roundRect(-2.5*s, 0, 5*s, 7*s, 1);
+  ctx.fill();
+  ctx.translate(0, 6*s);
+  ctx.fillStyle = '#111';
+  ctx.beginPath();
+  ctx.roundRect(-3.5*s, 0, 7*s, 3*s, 1);
+  ctx.fill();
+  ctx.restore();
+
+  // Torso
+  const ty = -2*s + bodyBob;
+  ctx.fillStyle = '#1976d2';
+  ctx.beginPath();
+  ctx.roundRect(-8*s, ty, 16*s, 13*s, 2);
+  ctx.fill();
+  // Collar
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(-2*s, ty); ctx.lineTo(2*s, ty);
+  ctx.lineTo(1*s, ty + 4*s); ctx.lineTo(-1*s, ty + 4*s);
+  ctx.closePath();
+  ctx.fill();
+  // Pocket
+  ctx.fillStyle = '#1565c0';
+  ctx.fillRect(-6*s, ty + 5*s, 4*s, 3*s);
+
+  // Belt
+  ctx.fillStyle = '#1a1a00';
+  ctx.fillRect(-8*s, ty + 12*s, 16*s, 2*s);
+
+  // Back arm
+  ctx.save();
+  ctx.translate(6*s, ty + 2*s);
+  ctx.rotate(armSwing * 0.08);
+  ctx.fillStyle = '#1976d2';
+  ctx.beginPath();
+  ctx.roundRect(-2.5*s, 0, 5*s, 8*s, 1);
+  ctx.fill();
+  ctx.translate(0, 7*s);
+  ctx.fillStyle = '#c68642';
+  ctx.beginPath();
+  ctx.roundRect(-2*s, 0, 4*s, 5*s, 1);
+  ctx.fill();
+  ctx.restore();
+
+  // Front arm
+  ctx.save();
+  ctx.translate(-6*s, ty + 2*s);
+  ctx.rotate(-armSwing * 0.08);
+  ctx.fillStyle = '#1e88e5';
+  ctx.beginPath();
+  ctx.roundRect(-2.5*s, 0, 5*s, 8*s, 1);
+  ctx.fill();
+  ctx.translate(0, 7*s);
+  ctx.fillStyle = '#c68642';
+  ctx.beginPath();
+  ctx.roundRect(-2*s, 0, 4*s, 5*s, 1);
+  ctx.fill();
+  ctx.restore();
+
+  // Neck
+  ctx.fillStyle = '#c68642';
+  ctx.beginPath();
+  ctx.roundRect(-2.5*s, ty - 3*s, 5*s, 4*s, 1);
+  ctx.fill();
+
+  // Head
+  const hy = ty - 13*s;
+  ctx.fillStyle = '#2a1500';
+  ctx.beginPath();
+  ctx.ellipse(0, hy, 7*s, 6*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = '#c68642';
+  ctx.beginPath();
+  ctx.ellipse(0, hy + 2*s, 6*s, 5.5*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Eyes
+  ctx.fillStyle = '#1a0a00';
+  ctx.beginPath();
+  ctx.ellipse(-2*s, hy + 1*s, 1.2*s, 1*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(2*s, hy + 1*s, 1.2*s, 1*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = 'white';
+  ctx.beginPath();
+  ctx.ellipse(-2*s, hy + 1*s, 0.7*s, 0.6*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(2*s, hy + 1*s, 0.7*s, 0.6*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Smile (nervous)
+  ctx.strokeStyle = '#7a4020';
+  ctx.lineWidth = 0.8*s;
+  ctx.beginPath();
+  ctx.arc(0, hy + 3*s, 2*s, 0.1, Math.PI - 0.1);
+  ctx.stroke();
+  // Eyebrows
+  ctx.strokeStyle = '#2a1500';
+  ctx.lineWidth = 0.8*s;
+  ctx.beginPath();
+  ctx.moveTo(-3.5*s, hy - 1*s); ctx.lineTo(-0.5*s, hy - 1.5*s);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(3.5*s, hy - 1*s); ctx.lineTo(0.5*s, hy - 1.5*s);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawPrisonerRed(ctx, x, y, scale, facing, animFrame) {
+  ctx.save();
+  ctx.translate(x, y);
+  if (facing === 'left') ctx.scale(-1, 1);
+  const s = scale;
+  const walk = animFrame;
+  const legSwing = Math.sin(walk * 0.18) * 6 * s;
+  const armSwing = Math.sin(walk * 0.18 + Math.PI) * 5 * s;
+  const bodyBob = Math.abs(Math.sin(walk * 0.18)) * 1.5 * s;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(0, 24*s + bodyBob, 12*s, 3*s, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Legs - stockier
+  ctx.save();
+  ctx.translate(2.5*s, 10*s + bodyBob);
+  ctx.rotate(-legSwing * 0.09);
+  ctx.fillStyle = '#bf360c';
+  ctx.beginPath();
+  ctx.roundRect(-3.5*s, 0, 7*s, 8*s, 1);
+  ctx.fill();
+  ctx.translate(0, 7.5*s);
+  ctx.rotate(Math.max(0, legSwing*0.06));
+  ctx.fillStyle = '#9a2c08';
+  ctx.beginPath();
+  ctx.roundRect(-3*s, 0, 6*s, 7*s, 1);
+  ctx.fill();
+  ctx.translate(0, 6*s);
+  ctx.fillStyle = '#0a0a0a';
+  ctx.beginPath();
+  ctx.roundRect(-3.5*s, 0, 7.5*s, 3*s, 1);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(-2.5*s, 10*s + bodyBob);
+  ctx.rotate(legSwing * 0.09);
+  ctx.fillStyle = '#d84315';
+  ctx.beginPath();
+  ctx.roundRect(-3.5*s, 0, 7*s, 8*s, 1);
+  ctx.fill();
+  ctx.translate(0, 7.5*s);
+  ctx.rotate(-Math.max(0, -legSwing*0.06));
+  ctx.fillStyle = '#bf360c';
+  ctx.beginPath();
+  ctx.roundRect(-3*s, 0, 6*s, 7*s, 1);
+  ctx.fill();
+  ctx.translate(0, 6*s);
+  ctx.fillStyle = '#0a0a0a';
+  ctx.beginPath();
+  ctx.roundRect(-4*s, 0, 7.5*s, 3*s, 1);
+  ctx.fill();
+  ctx.restore();
+
+  // Torso - wider
+  const ty = -3*s + bodyBob;
+  ctx.fillStyle = '#d84315';
+  ctx.beginPath();
+  ctx.roundRect(-9*s, ty, 18*s, 14*s, 2);
+  ctx.fill();
+  // Seams
+  ctx.strokeStyle = '#bf360c';
+  ctx.lineWidth = 0.8*s;
+  ctx.beginPath();
+  ctx.moveTo(0, ty + 1*s); ctx.lineTo(0, ty + 13*s);
+  ctx.stroke();
+  // Badge/number
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${5*s}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText('47', 4*s, ty + 8*s);
+
+  // Belt
+  ctx.fillStyle = '#1a0a00';
+  ctx.fillRect(-9*s, ty + 13*s, 18*s, 2.5*s);
+
+  // Arms
+  ctx.save();
+  ctx.translate(7*s, ty + 2*s);
+  ctx.rotate(armSwing * 0.09);
+  ctx.fillStyle = '#d84315';
+  ctx.beginPath();
+  ctx.roundRect(-3*s, 0, 6*s, 9*s, 1);
+  ctx.fill();
+  ctx.translate(0, 8*s);
+  ctx.fillStyle = '#a0522d';
+  ctx.beginPath();
+  ctx.roundRect(-2.5*s, 0, 5*s, 5*s, 1);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(-7*s, ty + 2*s);
+  ctx.rotate(-armSwing * 0.09);
+  ctx.fillStyle = '#e64a19';
+  ctx.beginPath();
+  ctx.roundRect(-3*s, 0, 6*s, 9*s, 1);
+  ctx.fill();
+  ctx.translate(0, 8*s);
+  ctx.fillStyle = '#a0522d';
+  ctx.beginPath();
+  ctx.roundRect(-2.5*s, 0, 5*s, 5*s, 1);
+  ctx.fill();
+  ctx.restore();
+
+  // Neck
+  ctx.fillStyle = '#a0522d';
+  ctx.beginPath();
+  ctx.roundRect(-3*s, ty - 3.5*s, 6*s, 4*s, 1);
+  ctx.fill();
+
+  // Head - wider, angrier
+  const hy = ty - 15*s;
+  ctx.fillStyle = '#2a1500';
+  ctx.beginPath();
+  ctx.ellipse(0, hy, 8*s, 6.5*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = '#a0522d';
+  ctx.beginPath();
+  ctx.ellipse(0, hy + 2*s, 7*s, 6.5*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Angry brows
+  ctx.strokeStyle = '#1a0a00';
+  ctx.lineWidth = 1.5*s;
+  ctx.beginPath();
+  ctx.moveTo(-5*s, hy - 2*s); ctx.lineTo(-1*s, hy);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(5*s, hy - 2*s); ctx.lineTo(1*s, hy);
+  ctx.stroke();
+  // Eyes
+  ctx.fillStyle = '#1a0a00';
+  ctx.beginPath();
+  ctx.ellipse(-2.5*s, hy + 1.5*s, 1.5*s, 1.2*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(2.5*s, hy + 1.5*s, 1.5*s, 1.2*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = 'white';
+  ctx.beginPath();
+  ctx.ellipse(-2.5*s, hy + 1.5*s, 0.8*s, 0.7*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(2.5*s, hy + 1.5*s, 0.8*s, 0.7*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Angry mouth
+  ctx.strokeStyle = '#5a2010';
+  ctx.lineWidth = 1*s;
+  ctx.beginPath();
+  ctx.arc(0, hy + 4*s, 2.5*s, Math.PI + 0.3, -0.3);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// ============================================================
+// MAIN MAP
+// ============================================================
+const mapCanvas = document.getElementById('mapCanvas');
+const mapCtx = mapCanvas.getContext('2d');
+
+let TILE = 28;
+
+function resizeMap() {
+  const parent = mapCanvas.parentElement;
+  mapCanvas.width = parent.clientWidth;
+  mapCanvas.height = parent.clientHeight - 37; // toolbar height
+  // Dynamically compute tile size to fill the full canvas
+  const COLS = 38, ROWS = 44;
+  const tileByW = mapCanvas.width / COLS;
+  const tileByH = mapCanvas.height / ROWS;
+  TILE = Math.min(tileByW, tileByH);
+}
+resizeMap();
+window.addEventListener('resize', resizeMap);
+
+// Prison layout
+const PRISON = {
+  // Walls (outer boundary)
+  outerWalls: [],
+  // Rooms/sectors
+  cellBlockA: { x: 2, y: 2, w: 10, h: 8, label: 'CELL BLOCK A' },
+  cellBlockB: { x: 14, y: 2, w: 10, h: 8, label: 'CELL BLOCK B' },
+  cellBlockC: { x: 26, y: 2, w: 10, h: 8, label: 'CELL BLOCK C' },
+  corridor1: { x: 2, y: 11, w: 34, h: 4, label: 'MAIN CORRIDOR' },
+  courtyard: { x: 2, y: 16, w: 22, h: 14, label: 'COURTYARD' },
+  controlRoom: { x: 26, y: 16, w: 10, h: 6, label: 'CONTROL ROOM' },
+  cafeteria: { x: 26, y: 24, w: 10, h: 6, label: 'CAFETERIA' },
+  medBay: { x: 2, y: 31, w: 10, h: 7, label: 'MED BAY' },
+  garage: { x: 14, y: 31, w: 10, h: 7, label: 'GARAGE' },
+  secGateway: { x: 26, y: 31, w: 10, h: 7, label: 'SECURITY GATE' },
+  corridor2: { x: 2, y: 39, w: 34, h: 3, label: 'EXIT CORRIDOR' },
+};
+
+// Agents
+const agents = [
+  // Police
+  { id: 'P001', type: 'police', name: 'SGT. BLAKE', x: 0, y: 0, tx: 0, ty: 0, vx: 0, vy: 0, frame: 0, facing: 'right', status: 'patrol', zone: 'CELL BLOCK A' },
+  { id: 'P002', type: 'police', name: 'OFF. CHEN', x: 0, y: 0, tx: 0, ty: 0, vx: 0, vy: 0, frame: 20, facing: 'left', status: 'patrol', zone: 'MAIN CORRIDOR' },
+  { id: 'P003', type: 'police', name: 'CPT. ROMERO', x: 0, y: 0, tx: 0, ty: 0, vx: 0, vy: 0, frame: 40, facing: 'right', status: 'patrol', zone: 'CONTROL ROOM' },
+  { id: 'P004', type: 'police', name: 'OFF. DAVIS', x: 0, y: 0, tx: 0, ty: 0, vx: 0, vy: 0, frame: 60, facing: 'right', status: 'patrol', zone: 'COURTYARD' },
+  { id: 'P005', type: 'police', name: 'OFF. HAYES', x: 0, y: 0, tx: 0, ty: 0, vx: 0, vy: 0, frame: 80, facing: 'left', status: 'patrol', zone: 'CELL BLOCK B' },
+  { id: 'P006', type: 'police', name: 'OFF. VEGA', x: 0, y: 0, tx: 0, ty: 0, vx: 0, vy: 0, frame: 100, facing: 'right', status: 'patrol', zone: 'SEC GATEWAY' },
+  // Blue prisoners
+  { id: 'B001', type: 'blue', name: 'INMATE #114', x: 0, y: 0, tx: 0, ty: 0, vx: 0, vy: 0, frame: 10, facing: 'right', status: 'escape', zone: 'MAIN CORRIDOR' },
+  { id: 'B002', type: 'blue', name: 'INMATE #227', x: 0, y: 0, tx: 0, ty: 0, vx: 0, vy: 0, frame: 30, facing: 'left', status: 'escape', zone: 'COURTYARD' },
+  { id: 'B003', type: 'blue', name: 'INMATE #315', x: 0, y: 0, tx: 0, ty: 0, vx: 0, vy: 0, frame: 50, facing: 'right', status: 'escape', zone: 'CELL BLOCK C' },
+  { id: 'B004', type: 'blue', name: 'INMATE #402', x: 0, y: 0, tx: 0, ty: 0, vx: 0, vy: 0, frame: 70, facing: 'left', status: 'captured', zone: 'MED BAY' },
+  // Red prisoners
+  { id: 'R001', type: 'red', name: 'INMATE #501', x: 0, y: 0, tx: 0, ty: 0, vx: 0, vy: 0, frame: 15, facing: 'right', status: 'escape', zone: 'EXIT CORRIDOR' },
+  { id: 'R002', type: 'red', name: 'INMATE #633', x: 0, y: 0, tx: 0, ty: 0, vx: 0, vy: 0, frame: 35, facing: 'left', status: 'escape', zone: 'GARAGE' },
+  { id: 'R003', type: 'red', name: 'INMATE #718', x: 0, y: 0, tx: 0, ty: 0, vx: 0, vy: 0, frame: 55, facing: 'right', status: 'captured', zone: 'CAFETERIA' },
+];
+
+// Define patrol zones for each agent
+const patrolZones = {
+  'P001': [{x:3,y:3},{x:10,y:3},{x:10,y:8},{x:3,y:8}],
+  'P002': [{x:3,y:12},{x:34,y:12},{x:34,y:14},{x:3,y:14}],
+  'P003': [{x:27,y:17},{x:34,y:17},{x:34,y:21},{x:27,y:21}],
+  'P004': [{x:3,y:17},{x:22,y:17},{x:22,y:29},{x:3,y:29}],
+  'P005': [{x:15,y:3},{x:22,y:3},{x:22,y:8},{x:15,y:8}],
+  'P006': [{x:27,y:32},{x:34,y:32},{x:34,y:37},{x:27,y:37}],
+  'B001': [{x:5,y:12},{x:28,y:12},{x:28,y:14},{x:5,y:14}],
+  'B002': [{x:4,y:18},{x:20,y:18},{x:20,y:28},{x:4,y:28}],
+  'B003': [{x:27,y:3},{x:34,y:3},{x:34,y:8},{x:27,y:8}],
+  'B004': [{x:3,y:32},{x:10,y:32},{x:10,y:36},{x:3,y:36}],
+  'R001': [{x:3,y:40},{x:34,y:40},{x:34,y:41},{x:3,y:41}],
+  'R002': [{x:15,y:32},{x:22,y:32},{x:22,y:37},{x:15,y:37}],
+  'R003': [{x:27,y:25},{x:34,y:25},{x:34,y:29},{x:27,y:29}],
+};
+
+// Initialize positions
+agents.forEach((a, i) => {
+  const zone = patrolZones[a.id];
+  if (zone) {
+    const pt = zone[0];
+    a.x = pt.x * TILE;
+    a.y = pt.y * TILE;
+    a.patrolIdx = 0;
+    a.patrolT = 0;
+  }
+});
+
+function getTilePos(tx, ty) {
+  const cw = mapCanvas.width;
+  const ch = mapCanvas.height;
+  const totalW = 38 * TILE;
+  const totalH = 44 * TILE;
+  // Center if canvas is bigger than map (e.g. when aspect ratio forces one axis smaller)
+  const ox = Math.max(0, (cw - totalW) / 2);
+  const oy = Math.max(0, (ch - totalH) / 2);
+  return { x: ox + tx * TILE, y: oy + ty * TILE };
+}
+
+function drawPrisonMap() {
+  const ctx = mapCtx;
+  const cw = mapCanvas.width;
+  const ch = mapCanvas.height;
+
+  // Full canvas dark concrete background — no gaps
+  ctx.fillStyle = '#020810';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Atmospheric radial gradient
+  const grd = ctx.createRadialGradient(cw/2, ch/2, 50, cw/2, ch/2, cw*0.7);
+  grd.addColorStop(0, 'rgba(0,30,80,0.2)');
+  grd.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Scanline CRT overlay across full canvas
+  for (let sy = 0; sy < ch; sy += 4) {
+    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    ctx.fillRect(0, sy, cw, 1);
+  }
+
+  const ox = getTilePos(0,0).x;
+  const oy = getTilePos(0,0).y;
+
+  // Outer wall fills entire canvas with concrete texture
+  ctx.fillStyle = '#0c1520';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Concrete noise pattern (tiled across full background)
+  ctx.strokeStyle = 'rgba(15,28,48,0.6)';
+  ctx.lineWidth = 0.5;
+  const bW = TILE * 0.7, bH = TILE * 0.35;
+  for (let bx = 0; bx < cw + bW; bx += bW) {
+    for (let by = 0; by < ch + bH; by += bH) {
+      const off = (Math.floor(by / bH) % 2) * (bW / 2);
+      ctx.strokeRect(bx + off - bW/2, by, bW, bH);
+    }
+  }
+
+  // Outer perimeter reinforced wall (thick, metallic)
+  const wallGrad = ctx.createLinearGradient(ox, oy, ox + 38*TILE, oy + 44*TILE);
+  wallGrad.addColorStop(0, '#0f1922');
+  wallGrad.addColorStop(1, '#0a1318');
+  ctx.fillStyle = wallGrad;
+  ctx.fillRect(ox, oy, 38*TILE, 44*TILE);
+
+  // Heavy outer wall border — reinforced steel look
+  ctx.strokeStyle = '#1e3855';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(ox + 1.5, oy + 1.5, 38*TILE - 3, 44*TILE - 3);
+  ctx.strokeStyle = 'rgba(0,180,255,0.08)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(ox + 4, oy + 4, 38*TILE - 8, 44*TILE - 8);
+
+  // Subtle floor grid (very subtle)
+  ctx.strokeStyle = 'rgba(20,50,80,0.25)';
+  ctx.lineWidth = 0.5;
+  for (let gx = 0; gx <= 38; gx++) {
+    ctx.beginPath();
+    ctx.moveTo(ox + gx*TILE, oy);
+    ctx.lineTo(ox + gx*TILE, oy + 44*TILE);
+    ctx.stroke();
+  }
+  for (let gy = 0; gy <= 44; gy++) {
+    ctx.beginPath();
+    ctx.moveTo(ox, oy + gy*TILE);
+    ctx.lineTo(ox + 38*TILE, oy + gy*TILE);
+    ctx.stroke();
+  }
+
+  // Outer perimeter wall
+  ctx.fillStyle = '#0f1922';
+  ctx.fillRect(ox, oy, 38*TILE, 44*TILE);
+
+  // Draw rooms with enhanced environment details
+  const rooms = [
+    { ...PRISON.cellBlockA, color: '#0e1e35', border: '#1a3055', labelColor: '#4a8ac5', zone: 'surveillance' },
+    { ...PRISON.cellBlockB, color: '#0e1e35', border: '#1a3055', labelColor: '#4a8ac5', zone: 'surveillance' },
+    { ...PRISON.cellBlockC, color: '#0e1e35', border: '#1a3055', labelColor: '#4a8ac5', zone: 'surveillance' },
+    { ...PRISON.corridor1, color: '#0a1520', border: '#143040', labelColor: '#2a6080', zone: 'corridor' },
+    { ...PRISON.courtyard, color: '#121a0e', border: '#253018', labelColor: '#4a6030', zone: 'open' },
+    { ...PRISON.controlRoom, color: '#15100a', border: '#302010', labelColor: '#8a7030', zone: 'restricted' },
+    { ...PRISON.cafeteria, color: '#0e1520', border: '#1a2535', labelColor: '#3a5070', zone: 'corridor' },
+    { ...PRISON.medBay, color: '#080f14', border: '#102030', labelColor: '#2a5060', zone: 'corridor' },
+    { ...PRISON.garage, color: '#0a1010', border: '#152020', labelColor: '#304540', zone: 'open' },
+    { ...PRISON.secGateway, color: '#120808', border: '#251010', labelColor: '#703030', zone: 'danger' },
+    { ...PRISON.corridor2, color: '#080c10', border: '#101820', labelColor: '#204060', zone: 'corridor' },
+  ];
+
+  const t = Date.now() / 1000;
+
+  rooms.forEach(r => {
+    const rx = ox + r.x * TILE;
+    const ry = oy + r.y * TILE;
+    const rw = r.w * TILE;
+    const rh = r.h * TILE;
+
+    // Room fill with zone-based gradient
+    let zoneColor1 = r.color, zoneColor2 = r.color;
+    if (r.zone === 'danger') { zoneColor1 = '#150808'; zoneColor2 = '#1a0808'; }
+    if (r.zone === 'restricted') { zoneColor1 = '#141000'; zoneColor2 = '#181300'; }
+    if (r.zone === 'surveillance') { zoneColor1 = '#0a1528'; zoneColor2 = '#0d1a30'; }
+
+    const g2 = ctx.createLinearGradient(rx, ry, rx + rw, ry + rh);
+    g2.addColorStop(0, zoneColor1);
+    g2.addColorStop(1, zoneColor2);
+    ctx.fillStyle = g2;
+    ctx.fillRect(rx, ry, rw, rh);
+
+    // Worn concrete / brick texture inside room
+    ctx.strokeStyle = 'rgba(30,50,80,0.15)';
+    ctx.lineWidth = 0.4;
+    const brickW = TILE * 0.7;
+    const brickH = TILE * 0.35;
+    for (let bx = rx; bx < rx + rw; bx += brickW) {
+      for (let by = ry; by < ry + rh; by += brickH) {
+        const offset = (Math.floor((by - ry) / brickH) % 2) * (brickW / 2);
+        ctx.strokeRect(bx + offset, by, brickW, brickH);
+      }
+    }
+
+    // Hazard stripes for danger zones
+    if (r.zone === 'danger' || r.zone === 'restricted') {
+      const stripeColor = r.zone === 'danger' ? 'rgba(255,23,68,0.04)' : 'rgba(255,215,64,0.04)';
+      ctx.save();
+      ctx.rect(rx, ry, rw, rh);
+      ctx.clip();
+      ctx.strokeStyle = stripeColor;
+      ctx.lineWidth = 8;
+      for (let d = -rh; d < rw + rh; d += 20) {
+        ctx.beginPath();
+        ctx.moveTo(rx + d, ry);
+        ctx.lineTo(rx + d + rh, ry + rh);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Room border — metallic look
+    ctx.strokeStyle = r.border;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
+
+    // Inner highlight bevel
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(rx + 2, ry + 2, rw - 4, rh - 4);
+
+    // Flickering ceiling lights inside rooms
+    const flickerSeed = r.x * 7 + r.y * 13;
+    const flickerT = Math.sin(t * 2.3 + flickerSeed) * Math.cos(t * 0.7 + flickerSeed * 0.3);
+    const lightAlpha = 0.04 + Math.max(0, flickerT) * 0.04;
+    const lightColor = r.zone === 'danger' ? `rgba(255,80,80,${lightAlpha})` :
+                       r.zone === 'restricted' ? `rgba(255,200,0,${lightAlpha})` :
+                       `rgba(150,200,255,${lightAlpha})`;
+    ctx.fillStyle = lightColor;
+    ctx.fillRect(rx, ry, rw, rh);
+
+    // Light fixtures (small dots at ceiling)
+    const numLights = Math.floor(r.w / 4);
+    for (let li = 0; li < numLights; li++) {
+      const lx = rx + (li + 0.5) * (rw / numLights);
+      const ly = ry + 8;
+      const lFlicker = 0.6 + 0.4 * Math.sin(t * 3.1 + flickerSeed + li * 1.7);
+      const lAlpha = r.zone === 'danger' ? 0.3 : 0.5;
+      ctx.fillStyle = `rgba(200,230,255,${lAlpha * lFlicker})`;
+      ctx.shadowBlur = 8 * lFlicker;
+      ctx.shadowColor = r.zone === 'danger' ? '#ff4444' : 'rgba(150,200,255,0.5)';
+      ctx.beginPath();
+      ctx.arc(lx, ly, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Zone label (styled per zone type)
+    const labelGlow = r.zone === 'danger' ? '#ff1744' : r.zone === 'restricted' ? '#ffd740' : r.labelColor;
+    ctx.fillStyle = labelGlow;
+    ctx.shadowBlur = 4;
+    ctx.shadowColor = labelGlow;
+    ctx.font = `bold ${Math.max(7, TILE * 0.28)}px 'Orbitron', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(r.label, rx + rw/2, ry + 14);
+    ctx.shadowBlur = 0;
+
+    // Warning signs for restricted zones
+    if (r.zone === 'danger' || r.zone === 'restricted') {
+      const warnAlpha = 0.5 + 0.5 * Math.sin(t * 2 + flickerSeed);
+      const warnColor = r.zone === 'danger' ? `rgba(255,23,68,${warnAlpha * 0.6})` : `rgba(255,215,64,${warnAlpha * 0.5})`;
+      ctx.fillStyle = warnColor;
+      ctx.font = `${Math.max(8, TILE * 0.35)}px sans-serif`;
+      ctx.fillText('⚠', rx + rw/2, ry + rh/2 + 4);
+    }
+  });
+
+  // Draw cell bars inside cell blocks
+  drawCellBars(ctx, ox + PRISON.cellBlockA.x * TILE, oy + PRISON.cellBlockA.y * TILE, PRISON.cellBlockA.w * TILE, PRISON.cellBlockA.h * TILE);
+  drawCellBars(ctx, ox + PRISON.cellBlockB.x * TILE, oy + PRISON.cellBlockB.y * TILE, PRISON.cellBlockB.w * TILE, PRISON.cellBlockB.h * TILE);
+  drawCellBars(ctx, ox + PRISON.cellBlockC.x * TILE, oy + PRISON.cellBlockC.y * TILE, PRISON.cellBlockC.w * TILE, PRISON.cellBlockC.h * TILE);
+
+  // CC Camera positions with enhanced sweep animation
+  const cameras = [
+    { tx: 12, ty: 11, zone: 'cellBlock', angle: -0.4, glitchSeed: 1.3 },
+    { tx: 24, ty: 16, zone: 'courtyard', angle: 0.6, glitchSeed: 2.7 },
+  ];
+
+  cameras.forEach((cam, ci) => {
+    const cx = ox + cam.tx * TILE;
+    const cy = oy + cam.ty * TILE;
+    const t = Date.now() / 1000;
+
+    // Rotating sweep (back and forth like a real camera)
+    const sweepRange = 0.5;
+    const sweepSpeed = 0.4 + ci * 0.15;
+    const scanAngle = cam.angle + Math.sin(t * sweepSpeed) * sweepRange;
+
+    // Occasional glitch jitter
+    const glitchT = Math.sin(t * 7.3 + cam.glitchSeed);
+    const glitch = glitchT > 0.95 ? (Math.random() - 0.5) * 0.15 : 0;
+    const finalAngle = scanAngle + glitch;
+
+    const fovAngle = 0.65;
+    const fovLen = 7 * TILE;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Outer glow halo on camera node
+    const haloGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, fovLen * 0.15);
+    haloGrad.addColorStop(0, 'rgba(0,255,100,0.15)');
+    haloGrad.addColorStop(1, 'rgba(0,255,100,0)');
+    ctx.fillStyle = haloGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, fovLen * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    // FOV cone with gradient transparency
+    const gfov = ctx.createRadialGradient(0, 0, 0, 0, 0, fovLen);
+    gfov.addColorStop(0, 'rgba(0,255,100,0.18)');
+    gfov.addColorStop(0.5, 'rgba(0,200,80,0.08)');
+    gfov.addColorStop(1, 'rgba(0,255,100,0)');
+    ctx.fillStyle = gfov;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, fovLen, finalAngle - fovAngle, finalAngle + fovAngle);
+    ctx.closePath();
+    ctx.fill();
+
+    // FOV border lines
+    ctx.strokeStyle = 'rgba(0,255,100,0.3)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(finalAngle - fovAngle) * fovLen, Math.sin(finalAngle - fovAngle) * fovLen);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(finalAngle + fovAngle) * fovLen, Math.sin(finalAngle + fovAngle) * fovLen);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Arc edge of cone
+    ctx.strokeStyle = 'rgba(0,255,100,0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, fovLen * 0.95, finalAngle - fovAngle, finalAngle + fovAngle);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Camera body — hardware unit
+    ctx.fillStyle = '#001a08';
+    ctx.strokeStyle = '#00e676';
+    ctx.lineWidth = 1.5;
+    ctx.shadowBlur = 16;
+    ctx.shadowColor = '#00e676';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Inner lens dot
+    ctx.fillStyle = '#00ff80';
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = '#00ff80';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Camera label
+    ctx.fillStyle = '#00e676';
+    ctx.font = `${Math.max(7, TILE * 0.26)}px Share Tech Mono`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`CC-${ci+1}`, cx, cy - 10);
+
+    // SIGNAL WEAK flicker text (random)
+    if (glitchT > 0.92) {
+      ctx.fillStyle = 'rgba(255,200,0,0.7)';
+      ctx.font = '7px Share Tech Mono';
+      ctx.fillText('SIG WEAK', cx, cy - 18);
+    }
+  });
+
+  // Alert zones — animated red pulsing borders
+  const alertT = (Math.sin(Date.now() / 300) + 1) / 2;
+  ctx.fillStyle = `rgba(255,23,68,${0.04 + alertT * 0.07})`;
+  ctx.fillRect(ox + PRISON.cellBlockA.x * TILE, oy + PRISON.cellBlockA.y * TILE,
+    PRISON.cellBlockA.w * TILE, PRISON.cellBlockA.h * TILE);
+  ctx.strokeStyle = `rgba(255,23,68,${0.4 + alertT * 0.5})`;
+  ctx.lineWidth = 2 + alertT;
+  ctx.shadowBlur = 10 * alertT;
+  ctx.shadowColor = '#ff1744';
+  ctx.setLineDash([6, 4]);
+  ctx.strokeRect(ox + PRISON.cellBlockA.x * TILE + 1, oy + PRISON.cellBlockA.y * TILE + 1,
+    PRISON.cellBlockA.w * TILE - 2, PRISON.cellBlockA.h * TILE - 2);
+  ctx.setLineDash([]);
+  ctx.shadowBlur = 0;
+
+  // BREACH label in alert zone
+  ctx.fillStyle = `rgba(255,23,68,${0.6 + alertT * 0.4})`;
+  ctx.font = `bold ${Math.max(8, TILE * 0.32)}px Orbitron`;
+  ctx.textAlign = 'center';
+  ctx.fillText('⚠ BREACH', ox + PRISON.cellBlockA.x * TILE + PRISON.cellBlockA.w * TILE / 2,
+    oy + PRISON.cellBlockA.y * TILE + PRISON.cellBlockA.h * TILE - 8);
+
+  // Motion trails for moving agents
+  agents.forEach(agent => {
+    const trailColor = agent.type === 'police' ? 'rgba(0,229,255,' : agent.type === 'blue' ? 'rgba(79,195,247,' : 'rgba(255,109,0,';
+    const speed = Math.sqrt((agent.x - (agent._px||agent.x))**2 + (agent.y - (agent._py||agent.y))**2);
+    if (speed > 0.3) {
+      const trailLen = 4;
+      for (let tr = 1; tr <= trailLen; tr++) {
+        const alpha = (trailLen - tr) / trailLen * 0.25;
+        const trX = ox + agent.x - (agent.x - (agent._px||agent.x)) * tr * 1.5;
+        const trY = oy + agent.y - (agent.y - (agent._py||agent.y)) * tr * 1.5;
+        ctx.fillStyle = `${trailColor}${alpha})`;
+        ctx.beginPath();
+        ctx.arc(trX, trY, 3 * (1 - tr/trailLen), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // Store previous position
+    agent._px = agent.x;
+    agent._py = agent.y;
+  });
+
+  // Draw agents with footstep pulse
+  agents.forEach(agent => {
+    const ax = ox + agent.x;
+    const ay = oy + agent.y;
+    const scale = 0.85;
+
+    // Footstep ripple
+    const footPhase = (agent.frame % 20) / 20;
+    if (footPhase < 0.3) {
+      const rippleAlpha = (0.3 - footPhase) / 0.3 * 0.3;
+      const rippleR = 8 + footPhase * 40;
+      const rippleColor = agent.type === 'police' ? `rgba(0,229,255,${rippleAlpha})` :
+                          agent.type === 'blue' ? `rgba(79,195,247,${rippleAlpha})` :
+                          `rgba(255,109,0,${rippleAlpha})`;
+      ctx.strokeStyle = rippleColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(ax, ay + 10, rippleR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (agent.type === 'police') {
+      drawPolice(ctx, ax, ay, scale, agent.facing, agent.frame);
+    } else if (agent.type === 'blue') {
+      drawPrisonerBlue(ctx, ax, ay, scale, agent.facing, agent.frame);
+    } else {
+      drawPrisonerRed(ctx, ax, ay, scale, agent.facing, agent.frame);
+    }
+
+    // Soft shadow under character
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.save();
+    ctx.scale(1, 0.3);
+    ctx.beginPath();
+    ctx.ellipse(ax, (ay + 20 * scale) / 0.3, 10, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Agent ID label
+    const labelColor = agent.type === 'police' ? '#00e5ff' : agent.type === 'blue' ? '#4fc3f7' : '#ff6d00';
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(ax - 15, ay - 34 * scale, 30, 11);
+    ctx.strokeStyle = labelColor + '44';
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(ax - 15, ay - 34 * scale, 30, 11);
+    ctx.fillStyle = labelColor;
+    ctx.font = `${Math.max(6, TILE * 0.24)}px Share Tech Mono`;
+    ctx.textAlign = 'center';
+    ctx.fillText(agent.id, ax, ay - 25 * scale);
+
+    // Status dot + detected pulse ring
+    const dotColor = agent.status === 'patrol' ? '#00e5ff' : agent.status === 'escape' ? '#ff6d00' : '#ff1744';
+    ctx.fillStyle = dotColor;
+    ctx.shadowBlur = 6;
+    ctx.shadowColor = dotColor;
+    ctx.beginPath();
+    ctx.arc(ax + 14, ay - 28 * scale, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Blinking red outline for escaped prisoners
+    if (agent.status === 'escape') {
+      const detectPulse = (Math.sin(Date.now() / 200 + agent.frame) + 1) / 2;
+      ctx.strokeStyle = `rgba(255,109,0,${0.3 + detectPulse * 0.5})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.rect(ax - 16, ay - 40 * scale, 32, 46 * scale);
+      ctx.stroke();
+      // Outer pulse ring
+      ctx.strokeStyle = `rgba(255,109,0,${detectPulse * 0.3})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(ax, ay - 10 * scale, 18 + detectPulse * 8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  });
+
+  // Compass
+  drawCompass(ctx, cw - 55, ch - 55, 35);
+
+  // Upgraded Scale bar
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(16, ch - 38, 108, 24);
+  ctx.strokeStyle = 'rgba(0,180,255,0.3)';
+  ctx.lineWidth = 0.5;
+  ctx.strokeRect(16, ch - 38, 108, 24);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(22, ch - 24, 50, 3);
+  ctx.fillStyle = '#666';
+  ctx.fillRect(22, ch - 24, 25, 3);
+  ctx.fillStyle = 'rgba(150,200,255,0.5)';
+  ctx.font = '8px Share Tech Mono';
+  ctx.textAlign = 'left';
+  ctx.fillText('0        50m', 22, ch - 14);
+
+  // Screen vignette (post-processing)
+  const vig = ctx.createRadialGradient(cw/2, ch/2, ch * 0.3, cw/2, ch/2, ch * 0.9);
+  vig.addColorStop(0, 'transparent');
+  vig.addColorStop(1, 'rgba(0,0,0,0.55)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Scanline post-effect (fine CRT lines over everything)
+  for (let sl = 0; sl < ch; sl += 2) {
+    ctx.fillStyle = 'rgba(0,0,0,0.04)';
+    ctx.fillRect(0, sl, cw, 1);
+  }
+
+  // Edge glow — neon cyan border around canvas
+  const edgeGrad = ctx.createLinearGradient(0, 0, 0, ch);
+  edgeGrad.addColorStop(0, 'rgba(0,229,255,0.06)');
+  edgeGrad.addColorStop(0.5, 'rgba(0,229,255,0.02)');
+  edgeGrad.addColorStop(1, 'rgba(255,23,68,0.06)');
+  ctx.strokeStyle = edgeGrad;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, cw - 2, ch - 2);
+}
+
+function drawCellBars(ctx, rx, ry, rw, rh) {
+  ctx.strokeStyle = 'rgba(50,80,120,0.5)';
+  ctx.lineWidth = 1;
+  const cellW = rw / 4;
+  for (let i = 1; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(rx + i * cellW, ry + 16);
+    ctx.lineTo(rx + i * cellW, ry + rh - 4);
+    ctx.stroke();
+  }
+  // Horizontal bar
+  ctx.beginPath();
+  ctx.moveTo(rx + 4, ry + rh / 2);
+  ctx.lineTo(rx + rw - 4, ry + rh / 2);
+  ctx.stroke();
+  // Bar lines in cells
+  ctx.strokeStyle = 'rgba(80,120,180,0.25)';
+  ctx.lineWidth = 0.8;
+  for (let i = 0; i < 4; i++) {
+    const cx2 = rx + i * cellW;
+    for (let b = 0; b < 5; b++) {
+      ctx.beginPath();
+      ctx.moveTo(cx2 + cellW * 0.15 + b * cellW * 0.15, ry + 20);
+      ctx.lineTo(cx2 + cellW * 0.15 + b * cellW * 0.15, ry + rh / 2 - 2);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawCompass(ctx, cx, cy, r) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.fillStyle = 'rgba(5,15,30,0.8)';
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,100,200,0.4)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  const dirs = [['N', 0, -1], ['E', 1, 0], ['S', 0, 1], ['W', -1, 0]];
+  dirs.forEach(([label, dx, dy]) => {
+    ctx.fillStyle = label === 'N' ? '#ff1744' : 'rgba(150,180,220,0.7)';
+    ctx.font = `bold ${9}px Orbitron`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, dx * (r - 12), dy * (r - 12));
+  });
+
+  ctx.fillStyle = '#ff1744';
+  ctx.beginPath();
+  ctx.moveTo(0, -r + 4); ctx.lineTo(3, 0); ctx.lineTo(-3, 0);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(150,180,220,0.6)';
+  ctx.beginPath();
+  ctx.moveTo(0, r - 4); ctx.lineTo(3, 0); ctx.lineTo(-3, 0);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function adjustColor(hex, amount) {
+  return hex; // simplified
+}
+
+// ============================================================
+// AGENT MOVEMENT
+// ============================================================
+function updateAgents() {
+  agents.forEach(agent => {
+    agent.frame += 1;
+    const zone = patrolZones[agent.id];
+    if (!zone) return;
+
+    const target = zone[agent.patrolIdx % zone.length];
+    const tx = target.x * TILE;
+    const ty = target.y * TILE;
+    const dx = tx - agent.x;
+    const dy = ty - agent.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    const speed = agent.type === 'police' ? 0.8 : 1.1;
+
+    if (dist < 3) {
+      agent.patrolIdx = (agent.patrolIdx + 1) % zone.length;
+    } else {
+      agent.x += (dx / dist) * speed;
+      agent.y += (dy / dist) * speed;
+      agent.facing = dx > 0 ? 'right' : 'left';
+    }
+  });
+}
+
+// ============================================================
+// CC CAMERA RENDERING
+// ============================================================
+function renderCamera(camId, centerTX, centerTY, agentFilter) {
+  const canvas = document.getElementById(camId);
+  const ctx = canvas.getContext('2d');
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  // Green-tinted surveillance aesthetic
+  ctx.fillStyle = '#000c04';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(0,80,30,0.3)';
+  ctx.lineWidth = 0.5;
+  for (let gx = 0; gx < cw; gx += 20) {
+    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, ch); ctx.stroke();
+  }
+  for (let gy = 0; gy < ch; gy += 20) {
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(cw, gy); ctx.stroke();
+  }
+
+  // Draw mini scene
+  const scale = 0.7;
+  const ox2 = cw / 2 - centerTX * TILE * scale;
+  const oy2 = ch / 2 - centerTY * TILE * scale;
+
+  // Ground
+  ctx.fillStyle = '#020c06';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Room tiles
+  const camRooms = camId === 'cam1' ? [PRISON.cellBlockA, PRISON.corridor1] : [PRISON.courtyard, PRISON.corridor1];
+  camRooms.forEach(r => {
+    const rx = ox2 + r.x * TILE * scale;
+    const ry = oy2 + r.y * TILE * scale;
+    ctx.fillStyle = 'rgba(0,40,15,0.8)';
+    ctx.fillRect(rx, ry, r.w * TILE * scale, r.h * TILE * scale);
+    ctx.strokeStyle = 'rgba(0,120,50,0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(rx, ry, r.w * TILE * scale, r.h * TILE * scale);
+  });
+
+  // Draw visible agents
+  agents.filter(a => agentFilter(a)).forEach(agent => {
+    const ax = ox2 + agent.x * scale;
+    const ay = oy2 + agent.y * scale;
+    if (ax < -20 || ax > cw + 20 || ay < -20 || ay > ch + 20) return;
+
+    ctx.save();
+    ctx.filter = 'hue-rotate(100deg) saturate(0.3) brightness(0.8)';
+    if (agent.type === 'police') drawPolice(ctx, ax, ay, scale * 0.8, agent.facing, agent.frame);
+    else if (agent.type === 'blue') drawPrisonerBlue(ctx, ax, ay, scale * 0.8, agent.facing, agent.frame);
+    else drawPrisonerRed(ctx, ax, ay, scale * 0.8, agent.facing, agent.frame);
+    ctx.restore();
+
+    // Green glow outline for cam
+    ctx.strokeStyle = 'rgba(0,255,80,0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(ax, ay, 10, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+
+  // CRT effect
+  for (let i = 0; i < ch; i += 3) {
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fillRect(0, i, cw, 1);
+  }
+
+  // Vignette
+  const vg = ctx.createRadialGradient(cw/2, ch/2, ch*0.3, cw/2, ch/2, ch*0.8);
+  vg.addColorStop(0, 'transparent');
+  vg.addColorStop(1, 'rgba(0,0,0,0.6)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Motion detection boxes
+  agents.filter(a => agentFilter(a) && a.type !== 'police').forEach(agent => {
+    const ax = ox2 + agent.x * scale;
+    const ay = oy2 + agent.y * scale;
+    if (ax < 0 || ax > cw || ay < 0 || ay > ch) return;
+    const flashAmt = (Math.sin(Date.now() / 200) + 1) / 2;
+    ctx.strokeStyle = `rgba(255,50,50,${0.5 + flashAmt * 0.5})`;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 2]);
+    ctx.strokeRect(ax - 14, ay - 35, 28, 40);
+    ctx.setLineDash([]);
+    ctx.fillStyle = `rgba(255,50,50,${0.7 + flashAmt * 0.3})`;
+    ctx.font = '7px Share Tech Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText('MOTION', ax, ay - 40);
+  });
+}
+
+// ============================================================
+// THREAT GAUGE
+// ============================================================
+function drawThreatGauge() {
+  const canvas = document.getElementById('threatCanvas');
+  const ctx = canvas.getContext('2d');
+  const cw = canvas.width, ch = canvas.height;
+  ctx.clearRect(0, 0, cw, ch);
+
+  const t = Date.now() / 1000;
+  const threatLevel = 0.78 + Math.sin(t * 0.3) * 0.05;
+
+  const cx = cw / 2, cy = ch / 2 + 10;
+  const r = 60;
+  const startAngle = Math.PI * 0.75;
+  const endAngle = Math.PI * 2.25;
+
+  // Background arc
+  ctx.strokeStyle = 'rgba(30,50,80,0.6)';
+  ctx.lineWidth = 12;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, startAngle, endAngle);
+  ctx.stroke();
+
+  // Colored threat arc
+  const arcEnd = startAngle + (endAngle - startAngle) * threatLevel;
+  const grad = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
+  grad.addColorStop(0, '#00e676');
+  grad.addColorStop(0.5, '#ffd740');
+  grad.addColorStop(1, '#ff1744');
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = 12;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, startAngle, arcEnd);
+  ctx.stroke();
+
+  // Center text
+  ctx.fillStyle = '#ff1744';
+  ctx.font = 'bold 28px Orbitron';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(Math.round(threatLevel * 100), cx, cy - 6);
+  ctx.fillStyle = '#ff5252';
+  ctx.font = '9px Orbitron';
+  ctx.fillText('THREAT %', cx, cy + 16);
+
+  // Tick marks
+  for (let i = 0; i <= 10; i++) {
+    const angle = startAngle + (endAngle - startAngle) * (i / 10);
+    const innerR = r - 18;
+    const outerR = r - (i % 5 === 0 ? 8 : 13);
+    ctx.strokeStyle = 'rgba(100,140,180,0.5)';
+    ctx.lineWidth = i % 5 === 0 ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(angle) * innerR, cy + Math.sin(angle) * innerR);
+    ctx.lineTo(cx + Math.cos(angle) * outerR, cy + Math.sin(angle) * outerR);
+    ctx.stroke();
+  }
+}
+
+// ============================================================
+// EVENT LOG
+// ============================================================
+const events = [
+  { type: 'ev-alert', time: '23:14:02', msg: '⚠ BREACH detected CELL BLOCK A - Gate 3' },
+  { type: 'ev-warning', time: '23:13:58', msg: '⚡ INMATE #501 moving toward EXIT' },
+  { type: 'ev-alert', time: '23:13:44', msg: '🔴 Multiple prisoners mobilizing' },
+  { type: 'ev-info', time: '23:13:31', msg: '📡 CAM-02 motion triggered' },
+  { type: 'ev-warning', time: '23:13:20', msg: '⚡ Lock failure: SECURITY GATE' },
+  { type: 'ev-info', time: '23:12:55', msg: '✅ SGT. BLAKE dispatched to Block A' },
+  { type: 'ev-alert', time: '23:12:40', msg: '🔴 INMATE #114 — fence alert' },
+  { type: 'ev-info', time: '23:12:28', msg: '📡 All units responding' },
+];
+
+function renderEventLog() {
+  const el = document.getElementById('eventLog');
+  el.innerHTML = events.map(e =>
+    `<div class="event-item ${e.type}">
+      <span class="event-time">${e.time}</span>
+      <span class="event-msg">${e.msg}</span>
+    </div>`
+  ).join('');
+}
+
+// Periodically add new events
+const newEvents = [
+  { type: 'ev-alert', msg: '⚠ INMATE #633 approaching perimeter wall' },
+  { type: 'ev-warning', msg: '⚡ CPT. ROMERO requesting backup' },
+  { type: 'ev-info', msg: '📡 Doors sealed — CAFETERIA sector' },
+  { type: 'ev-alert', msg: '🔴 Motion alert: GARAGE zone' },
+  { type: 'ev-warning', msg: '⚡ Dog unit dispatched' },
+  { type: 'ev-info', msg: '✅ INMATE #402 — recaptured MED BAY' },
+];
+let newEventIdx = 0;
+setInterval(() => {
+  const now = new Date();
+  const ts = String(now.getHours()).padStart(2,'0') + ':' +
+    String(now.getMinutes()).padStart(2,'0') + ':' +
+    String(now.getSeconds()).padStart(2,'0');
+  events.unshift({ ...newEvents[newEventIdx % newEvents.length], time: ts });
+  if (events.length > 12) events.pop();
+  newEventIdx++;
+  renderEventLog();
+}, 4000);
+
+// ============================================================
+// AGENT LIST
+// ============================================================
+function renderAgentList() {
+  const list = document.getElementById('agentList');
+  const svgPolice = `<svg viewBox="0 0 36 46" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="18" cy="44" rx="10" ry="2.5" fill="rgba(0,0,0,0.3)"/>
+    <rect x="12" y="22" width="12" height="14" rx="2" fill="#1a2655"/>
+    <rect x="13" y="23" width="10" height="11" rx="1" fill="#0f1830"/>
+    <rect x="14" y="25" width="3" height="2.5" fill="#0a1225"/>
+    <rect x="19" y="25" width="3" height="2.5" fill="#0a1225"/>
+    <circle cx="15" cy="24" r="1.2" fill="#ffd740"/>
+    <rect x="10" y="34" width="16" height="2" fill="#0a0a10"/>
+    <rect x="10" y="24" width="4.5" height="8" rx="1" fill="#1a2655"/>
+    <rect x="21.5" y="24" width="4.5" height="8" rx="1" fill="#1a2655"/>
+    <rect x="11" y="32" width="5" height="7" rx="1" fill="#1a2655"/>
+    <rect x="20" y="32" width="5" height="7" rx="1" fill="#1e2e68"/>
+    <rect x="9.5" y="38" width="7" height="3" rx="1" fill="#080808"/>
+    <rect x="20" y="38" width="7" height="3" rx="1" fill="#080808"/>
+    <rect x="15" y="19" width="6" height="4" rx="1" fill="#c68642"/>
+    <ellipse cx="18" cy="14" rx="7" ry="6" fill="#c68642"/>
+    <ellipse cx="18" cy="12" rx="7.5" ry="6" fill="#1a0a00"/>
+    <ellipse cx="18" cy="14" rx="6.5" ry="5.5" fill="#c68642"/>
+    <ellipse cx="15.5" cy="13" rx="1.2" ry="1" fill="#1a0a00"/>
+    <ellipse cx="20.5" cy="13" rx="1.2" ry="1" fill="#1a0a00"/>
+    <ellipse cx="15.5" cy="13" rx="0.7" ry="0.6" fill="white"/>
+    <ellipse cx="20.5" cy="13" rx="0.7" ry="0.6" fill="white"/>
+    <line x1="16" y1="17" x2="20" y2="17" stroke="#7a4020" stroke-width="0.8"/>
+    <line x1="12" y1="11" x2="15" y2="12" stroke="#1a0a00" stroke-width="1"/>
+    <line x1="24" y1="11" x2="21" y2="12" stroke="#1a0a00" stroke-width="1"/>
+  </svg>`;
+
+  const svgBlue = `<svg viewBox="0 0 36 46" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="18" cy="44" rx="10" ry="2.5" fill="rgba(0,0,0,0.3)"/>
+    <rect x="11" y="22" width="14" height="13" rx="2" fill="#1976d2"/>
+    <path d="M16 22 L20 22 L19 26 L17 26 Z" fill="white"/>
+    <rect x="9" y="24" width="4.5" height="8" rx="1" fill="#1976d2"/>
+    <rect x="22.5" y="24" width="4.5" height="8" rx="1" fill="#1e88e5"/>
+    <rect x="11" y="33" width="6" height="7" rx="1" fill="#1565c0"/>
+    <rect x="19" y="33" width="6" height="7" rx="1" fill="#1976d2"/>
+    <rect x="10" y="38" width="7" height="3" rx="1" fill="#111"/>
+    <rect x="19.5" y="38" width="7" height="3" rx="1" fill="#111"/>
+    <rect x="15" y="19" width="6" height="4" rx="1" fill="#c68642"/>
+    <ellipse cx="18" cy="13" rx="7" ry="6" fill="#c68642"/>
+    <ellipse cx="18" cy="11" rx="7" ry="5.5" fill="#2a1500"/>
+    <ellipse cx="18" cy="13" rx="6" ry="5.5" fill="#c68642"/>
+    <ellipse cx="16" cy="12" rx="1.2" ry="1" fill="#1a0a00"/>
+    <ellipse cx="20" cy="12" rx="1.2" ry="1" fill="#1a0a00"/>
+    <ellipse cx="16" cy="12" rx="0.7" ry="0.6" fill="white"/>
+    <ellipse cx="20" cy="12" rx="0.7" ry="0.6" fill="white"/>
+    <path d="M16 16 Q18 18 20 16" stroke="#7a4020" stroke-width="0.8" fill="none"/>
+    <line x1="13" y1="10" x2="16" y2="11" stroke="#2a1500" stroke-width="0.8"/>
+    <line x1="23" y1="10" x2="20" y2="11" stroke="#2a1500" stroke-width="0.8"/>
+  </svg>`;
+
+  const svgRed = `<svg viewBox="0 0 36 46" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="18" cy="44" rx="11" ry="2.5" fill="rgba(0,0,0,0.3)"/>
+    <rect x="9" y="21" width="18" height="14" rx="2" fill="#d84315"/>
+    <line x1="18" y1="22" x2="18" y2="34" stroke="#bf360c" stroke-width="0.8"/>
+    <text x="21" y="31" font-size="5" font-weight="bold" fill="white" font-family="monospace">47</text>
+    <rect x="7" y="23" width="5" height="9" rx="1" fill="#d84315"/>
+    <rect x="24" y="23" width="5" height="9" rx="1" fill="#e64a19"/>
+    <rect x="9" y="33" width="7" height="7" rx="1" fill="#bf360c"/>
+    <rect x="20" y="33" width="7" height="7" rx="1" fill="#d84315"/>
+    <rect x="8" y="38" width="8" height="3" rx="1" fill="#0a0a0a"/>
+    <rect x="20" y="38" width="8" height="3" rx="1" fill="#0a0a0a"/>
+    <rect x="15" y="18" width="6" height="4" rx="1" fill="#a0522d"/>
+    <ellipse cx="18" cy="12" rx="8" ry="7" fill="#a0522d"/>
+    <ellipse cx="18" cy="10" rx="8" ry="6.5" fill="#2a1500"/>
+    <ellipse cx="18" cy="12" rx="7" ry="6.5" fill="#a0522d"/>
+    <line x1="13" y1="8.5" x2="17" y2="10.5" stroke="#1a0a00" stroke-width="1.5"/>
+    <line x1="23" y1="8.5" x2="19" y2="10.5" stroke="#1a0a00" stroke-width="1.5"/>
+    <ellipse cx="15.5" cy="12" rx="1.5" ry="1.2" fill="#1a0a00"/>
+    <ellipse cx="20.5" cy="12" rx="1.5" ry="1.2" fill="#1a0a00"/>
+    <ellipse cx="15.5" cy="12" rx="0.8" ry="0.7" fill="white"/>
+    <ellipse cx="20.5" cy="12" rx="0.8" ry="0.7" fill="white"/>
+    <path d="M16 17 Q18 15 20 17" stroke="#5a2010" stroke-width="1" fill="none"/>
+  </svg>`;
+
+  list.innerHTML = agents.map(a => {
+    const cls = a.type === 'police' ? 'police' : a.type === 'blue' ? 'prisoner-blue' : 'prisoner-red';
+    const badgeCls = a.status === 'patrol' ? 'badge-patrol' : a.status === 'escape' ? 'badge-escape' : 'badge-captured';
+    const badgeLabel = a.status.toUpperCase();
+    const nameColor = a.type === 'police' ? '#00e5ff' : a.type === 'blue' ? '#4fc3f7' : '#ff6d00';
+    const svg = a.type === 'police' ? svgPolice : a.type === 'blue' ? svgBlue : svgRed;
+    return `<div class="agent-card ${cls}">
+      <div class="agent-sprite-mini">${svg}</div>
+      <div class="agent-info">
+        <div class="agent-name" style="color:${nameColor}">${a.name}</div>
+        <div class="agent-status">${a.zone}</div>
+      </div>
+      <div class="agent-badge ${badgeCls}">${badgeLabel}</div>
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+let frameCount = 0;
+function gameLoop() {
+  frameCount++;
+  updateAgents();
+  drawPrisonMap();
+  renderCamera('cam1', 8, 10, a => {
+    const z = patrolZones[a.id];
+    return z && (z[0].y < 16);
+  });
+  renderCamera('cam2', 13, 24, a => {
+    const z = patrolZones[a.id];
+    return z && (z[0].y >= 16 && z[0].y < 32);
+  });
+  if (frameCount % 60 === 0) drawThreatGauge();
+  requestAnimationFrame(gameLoop);
+}
+
+// Init
+renderEventLog();
+renderAgentList();
+drawThreatGauge();
+gameLoop();
+
+// Resize handling
+window.addEventListener('resize', () => {
+  resizeMap();
+});
+
+// ============================================================
+// TOAST NOTIFICATIONS
+// ============================================================
+function showToast(msg, color = '#ff1744') {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.style.borderColor = color;
+  toast.style.color = color;
+  toast.style.boxShadow = `0 0 20px ${color}33`;
+  toast.textContent = msg;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 4200);
+}
+
+const toastMessages = [
+  ['⚠ BREACH DETECTED — CELL BLOCK A', '#ff1744'],
+  ['⚡ INMATE #501 APPROACHING EXIT', '#ff6d00'],
+  ['📡 MOTION ALERT — GARAGE SECTOR', '#ffd740'],
+  ['🔴 GUARD RESPONSE: CRITICAL', '#ff1744'],
+  ['⚡ CAMERA GLITCH — CC-02', '#ff6d00'],
+  ['✅ INMATE #402 RECAPTURED', '#00e676'],
+];
+let toastIdx = 0;
+setInterval(() => {
+  const [msg, color] = toastMessages[toastIdx % toastMessages.length];
+  showToast(msg, color);
+  toastIdx++;
+}, 7000);
+
+// ============================================================
+// ANIMATED STAT BARS — colour pulse on critical
+// ============================================================
+function pulseStatBars() {
+  document.querySelectorAll('.stat-bar-fill').forEach(bar => {
+    const w = parseFloat(bar.style.width);
+    if (w > 85) {
+      bar.style.boxShadow = `0 0 8px ${bar.style.background}`;
+    }
+  });
+}
+pulseStatBars();
+</script>
+</body>
+</html>

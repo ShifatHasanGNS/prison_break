@@ -10,8 +10,8 @@ config_version=5
 
 [application]
 
-config/name="Prison Break: Triple Threat Escape Challenge"
-run/main_scene="res://scenes/title_screen.tscn"
+config/name="Prison Break"
+run/main_scene="res://scenes/intro_screen.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
 
@@ -21,6 +21,7 @@ SoundManager="*res://autoloads/sound_manager.gd"
 EventBus="*res://autoloads/event_bus.gd"
 SimRandom="*res://autoloads/sim_random.gd"
 SpriteLoader="*res://autoloads/sprite_loader.gd"
+UserSettings="*res://autoloads/user_settings.gd"
 
 [display]
 
@@ -29,13 +30,8 @@ window/size/viewport_height=1080
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
-[physics]
-
-3d/physics_engine="Jolt Physics"
-
 [rendering]
 
-rendering_device/driver.windows="d3d12"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 environment/defaults/default_clear_color=Color(0.055, 0.078, 0.125, 1)

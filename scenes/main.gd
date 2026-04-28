@@ -140,7 +140,7 @@ func _ready() -> void:
 	_hud_root = HudRoot.new()
 	_hud_root.name = "HudRoot"
 	hud_layer.add_child(_hud_root)
-	_hud_root.setup(sim._agents, sim._exit_rotator)
+	_hud_root.setup(sim._agents, sim._exit_rotator, sim, sim.get_camera_system(), _overlay_manager)
 
 	# StepDebugger — world-space Node2D; draws at screen bottom via
 	# draw_set_transform_matrix(canvas_transform.inverse()).

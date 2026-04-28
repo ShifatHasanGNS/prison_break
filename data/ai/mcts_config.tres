@@ -5,6 +5,6 @@
 [resource]
 script = ExtResource("1")
 max_iterations = 200
-rollout_depth = 10
+rollout_depth = 18
 low_danger_bias = 0.7
 exploration_constant = 1.414

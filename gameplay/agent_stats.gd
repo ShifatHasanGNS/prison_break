@@ -11,3 +11,7 @@ class_name AgentStats
 @export var sprint_speed: int = 2
 @export var stamina_regen: float = 5.0
 @export var stamina_sprint_cost: float = 10.0
+# MINOR #4 FIX: Per-agent move stamina cost. Default 0 means the simulation
+# uses the global MOVE_STAMINA_COST constant. Set > 0 to override per-agent
+# (e.g. Blue could be tuned to 0.5 for lighter stamina drain on each move).
+@export var stamina_move_cost: float = 0.0

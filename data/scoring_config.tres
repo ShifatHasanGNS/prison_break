@@ -1,3 +1,25 @@
-[gd_resource type="Resource" format=3]
+[gd_resource type="Resource" script_class="ScoringConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://data/scoring_config.gd" id="1"]
 
 [resource]
+script = ExtResource("1")
+first_escape_bonus = 300.0
+second_escape_bonus = 190.0
+progress_cell_bonus = 6.0
+survival_per_second = 0.5
+dog_zone_penalty_per_second = -12.0
+camera_hit_penalty = -10.0
+wall_hit_penalty = -4.0
+fire_elimination_penalty = -55.0
+capture_penalty = -75.0
+timeout_penalty = -35.0
+patrol_coverage_bonus = 0.5
+capture_bonus = 190.0
+dog_assist_bonus = 24.0
+cctv_assist_bonus = 15.0
+fire_assist_bonus = 20.0
+pressure_per_second = 2.0
+escape_allowed_penalty = -70.0
+full_containment_bonus = 900.0
+repeat_capture_bonus = 65.0

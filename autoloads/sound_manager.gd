@@ -15,6 +15,9 @@ var _music: AudioStreamPlayer = null
 func _ready() -> void:
 	_build_all_sfx()
 	_connect_events()
+	if UserSettings != null:
+		UserSettings.settings_changed.connect(_apply_user_settings)
+		_apply_user_settings()
 	call_deferred("_start_music")
 
 # =========================================================================
@@ -22,6 +25,8 @@ func _ready() -> void:
 # =========================================================================
 
 func play(sound_name: String) -> void:
+	if UserSettings != null and not UserSettings.sound_enabled:
+		return
 	var player: AudioStreamPlayer = _sfx.get(sound_name, null)
 	if player == null:
 		return
@@ -34,6 +39,19 @@ func stop_all() -> void:
 		player.stop()
 	if _music != null:
 		_music.stop()
+
+func _apply_user_settings() -> void:
+	if UserSettings == null:
+		return
+	for player in _sfx.values():
+		if player is AudioStreamPlayer:
+			player.volume_db = UserSettings.master_volume_db
+	if _music != null:
+		_music.volume_db = -10.0 + UserSettings.master_volume_db
+		if not UserSettings.music_enabled and _music.playing:
+			_music.stop()
+		elif UserSettings.music_enabled and not _music.playing:
+			_music.play()
 
 # =========================================================================
 # EventBus connections
@@ -325,6 +343,8 @@ func _synth_fire_crackle() -> AudioStreamWAV:
 # =========================================================================
 
 func _start_music() -> void:
+	if UserSettings != null and not UserSettings.music_enabled:
+		return
 	if _music != null and is_instance_valid(_music):
 		if not _music.playing:
 			_music.play()
@@ -346,6 +366,7 @@ func _start_music() -> void:
 	_music.bus = "Master"
 	add_child(_music)
 	_music.finished.connect(_on_music_finished)
+	_apply_user_settings()
 	_music.play()
 
 func _on_music_finished() -> void:

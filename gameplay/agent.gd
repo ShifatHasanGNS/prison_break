@@ -3,32 +3,61 @@ class_name Agent
 
 const TILE_SIZE: int = 48
 
-# Theme colours used in drawing
-const C_HIGHLIGHT := Color(0.290, 0.855, 0.502)
+var agent_id: int = -1
+var grid_pos: Vector2i = Vector2i.ZERO
+var initial_pos: Vector2i = Vector2i.ZERO
+var stats: AgentStats = null
 
-# -------------------------------------------------------------------------
-# Identity & state
-# -------------------------------------------------------------------------
+var health: float = 100.0
+var stamina: float = 100.0
+var stealth_level: float = 100.0
+var is_active: bool = true
+var capture_count: int = 0
+var escape_rank: int = -1
+var elimination_tick: int = -1
+var camera_detections: int = 0
+## MINOR #2 FIX: camera_detections is now per-life (reset on respawn).
+## total_camera_detections accumulates across all lives for the results screen.
+var total_camera_detections: int = 0
+var cctv_alert_target: Vector2i = Vector2i(-1, -1)
+var cctv_alert_ticks: int = 0
+var metrics: Dictionary = {
+	"moves": 0,
+	"waits": 0,
+	"abilities": 0,
+	"sprints": 0,
+	# FIX #5: captures_inflicted removed — agent.capture_count is the single
+	# source of truth, always incremented synchronously in simulation_loop.
+	"raw_score": 0.0,
+	"performance": 50.0,
+	"best_progress_cells": 0,
+	"dog_zone_time": 0.0,
+	"camera_hits": 0,
+	"wall_hits": 0,
+	"dog_assists": 0,
+	"cctv_assists": 0,
+	"fire_assists": 0,
+	"escapes_allowed": 0,
+	"captures_made": 0,
+	"alert_level": 0.0,
+}
 
-var agent_id : int       = 0
-var grid_pos : Vector2i  = Vector2i.ZERO
-var health   : float     = 100.0
-var stamina  : float     = 100.0
-var is_active              : bool      = true
-var initial_pos            : Vector2i  = Vector2i.ZERO
-var capture_count          : int       = 0
-## Ticks remaining before this prisoner can be captured again (respawn protection).
-var capture_cooldown_ticks : int       = 0
+var capture_cooldown_ticks: int = 0
 
-var stats            : AgentStats = null
-var _status_effects  : Array      = []
-var _ai_controller   : Variant    = null
-var _abilities       : Array      = []
+var _status_effects: Array[StatusEffect] = []
+var _abilities: Array[Ability] = []
+var _ai_controller: AIController = null
 
-# --- Visual state ---
-var _role   : String   = ""
-var _facing : Vector2i = Vector2i(1, 0)
-var _bob    : float    = 0.0
+var _role: String = ""
+var _facing: Vector2i = Vector2i(1, 0)
+var _bob: float = 0.0
+var _visual_target_pos: Vector2 = Vector2.ZERO
+var _step_phase: float = 0.0
+var _trail_points: Array[Vector2] = []
+const TRAIL_MAX: int = 7
+var movement_speed_multiplier: float = 1.0
+var _temporary_slows: Dictionary = {}
+var _movement_tick_accumulator: float = 0.0
 
 # --- Pathfinding ---
 var _needs_replan: bool = false
@@ -39,15 +68,26 @@ var _needs_replan: bool = false
 
 func _ready() -> void:
 	z_index = 2   # renders above dog (z=1) and grid
+	add_to_group("agents")  # FIX #6: allows respawn BFS to find police positions
 	# Transient visual effects spawned in response to simulation events
 	EventBus.agent_status_changed.connect(_on_status_changed_fx)
 	EventBus.agent_captured.connect(_on_captured_fx)
 	EventBus.agent_escaped.connect(_on_escaped_fx)
 	EventBus.agent_entered_fire.connect(_on_fire_fx)
 	EventBus.agent_action_chosen.connect(_on_action_chosen_fx)
+	EventBus.camera_detection.connect(_on_camera_detection)
 
-func _process(_delta: float) -> void:
-	_bob = sin(Time.get_ticks_msec() * 0.003)
+func _process(delta: float) -> void:
+	var move_delta: Vector2 = _visual_target_pos - position
+	var visual_speed: float = maxf(0.2, movement_speed_multiplier)
+	position += move_delta * minf(1.0, delta * 10.0 * visual_speed)
+	_step_phase += delta * (12.0 if move_delta.length() > 0.5 else 4.0)
+	_bob = sin(_step_phase)
+	if move_delta.length() > 0.25:
+		if _trail_points.is_empty() or _trail_points[_trail_points.size() - 1].distance_to(global_position) > 4.0:
+			_trail_points.append(global_position)
+			if _trail_points.size() > TRAIL_MAX:
+				_trail_points.pop_front()
 	queue_redraw()
 
 # -------------------------------------------------------------------------
@@ -55,40 +95,120 @@ func _process(_delta: float) -> void:
 # -------------------------------------------------------------------------
 
 func setup(id: int, pos: Vector2i, agent_stats: AgentStats) -> void:
-	agent_id    = id
-	grid_pos    = pos
+	agent_id = id
+	grid_pos = pos
 	initial_pos = pos
-	stats       = agent_stats
-	health      = stats.max_health
-	stamina     = stats.max_stamina
+	stats = agent_stats
+	health = stats.max_health
+	stamina = stats.max_stamina
+	stealth_level = 100.0
 	set_grid_visual_pos()
 
 func set_grid_visual_pos() -> void:
-	position = Vector2(
+	_visual_target_pos = Vector2(
 		grid_pos.x * TILE_SIZE + TILE_SIZE / 2.0,
 		grid_pos.y * TILE_SIZE + TILE_SIZE / 2.0
 	)
+	position = _visual_target_pos
 	queue_redraw()
 
 func respawn() -> void:
-	grid_pos               = initial_pos
-	health                 = stats.max_health if stats != null else 100.0
-	stamina                = stats.max_stamina if stats != null else 100.0
-	capture_cooldown_ticks = 10   # ~2.5 s at 4 Hz — immunity after respawn
+	# FIX #6: Pick a safe respawn tile that is farthest from the nearest police
+	# so the police cannot camp initial_pos and chain-capture.
+	grid_pos = _pick_safe_respawn_pos()
+	initial_pos = grid_pos  # update so future respawns also use a rotated safe point
+	var max_hp: float = stats.max_health if stats != null else 100.0
+	health = maxf(1.0, max_hp - 25.0)
+	stamina = stats.max_stamina if stats != null else 100.0
+	stealth_level = 50.0
+	# FIX #6: 20 ticks (~5 s at 4 Hz) instead of 10 (~2.5 s).
+	# Police base_speed=2 can reach 5 tiles in ~1.25 s, so 10 ticks was
+	# frequently not enough to clear the spawn zone before immunity expired.
+	capture_cooldown_ticks = 20
 	_status_effects.clear()
+	# MINOR #2 FIX: Reset per-life camera_detections; accumulate into total.
+	total_camera_detections += camera_detections
+	camera_detections = 0
+	cctv_alert_target = Vector2i(-1, -1)
+	cctv_alert_ticks = 0
+	movement_speed_multiplier = 1.0
+	_temporary_slows.clear()
+	_movement_tick_accumulator = 0.0
 	if _ai_controller != null and _ai_controller.has_method("clear_history"):
 		_ai_controller.clear_history()
 	set_grid_visual_pos()
 	EventBus.emit_signal("agent_respawned", agent_id)
-	print("  [%s] RESPAWNED at %s (total captures: %d)" % [_role, initial_pos, capture_count])
+	print("  [%s] RESPAWNED at %s (total captures: %d)" % [_role, grid_pos, capture_count])
+
+# FIX #6: Find the walkable tile reachable from initial_pos that is farthest
+# from any active police agent.  Falls back to initial_pos if no grid is available.
+func _pick_safe_respawn_pos() -> Vector2i:
+	# We don't store a reference to the grid or agents directly on Agent, so we
+	# read police positions from the scene tree via the EventBus agent list.
+	# Use a BFS from initial_pos to enumerate nearby walkable tiles, then pick
+	# the one with maximum minimum-distance to any police position.
+	var police_tiles: Array[Vector2i] = []
+	for node in get_tree().get_nodes_in_group("agents"):
+		var a: Agent = node as Agent
+		if a != null and a._role == "police" and a.is_active:
+			police_tiles.append(a.grid_pos)
+
+	# If no police found or no grid, return original spawn point.
+	var grid_node: Node = get_node_or_null("/root/Game/GridEngine")
+	if grid_node == null:
+		grid_node = get_node_or_null("/root/Main/Game/GridEngine")
+	if grid_node == null or police_tiles.is_empty():
+		return initial_pos
+
+	# BFS to collect candidate tiles within radius 6 of initial_pos.
+	var visited: Dictionary = {}
+	var queue: Array[Vector2i] = [initial_pos]
+	visited[initial_pos] = true
+	var candidates: Array[Vector2i] = []
+	var max_radius: int = 6
+
+	while not queue.is_empty():
+		var cur: Vector2i = queue.pop_front()
+		candidates.append(cur)
+		for nb in grid_node.get_neighbours(cur):
+			if visited.has(nb):
+				continue
+			if not grid_node.is_walkable(nb):
+				continue
+			if abs(nb.x - initial_pos.x) + abs(nb.y - initial_pos.y) > max_radius:
+				continue
+			visited[nb] = true
+			queue.append(nb)
+
+	if candidates.is_empty():
+		return initial_pos
+
+	# Pick candidate farthest from nearest police.
+	var best_tile: Vector2i = initial_pos
+	var best_dist: int = -1
+	for c in candidates:
+		var min_pd: int = 999999
+		for pt in police_tiles:
+			var d: int = abs(c.x - pt.x) + abs(c.y - pt.y)
+			if d < min_pd:
+				min_pd = d
+		if min_pd > best_dist:
+			best_dist = min_pd
+			best_tile = c
+	return best_tile
 
 func move_to(pos: Vector2i) -> void:
-	var old_pos : Vector2i = grid_pos
-	var dir     : Vector2i = pos - old_pos
+	var old_pos: Vector2i = grid_pos
+	var dir: Vector2i = pos - old_pos
 	if dir != Vector2i.ZERO:
 		_facing = dir
+		metrics["moves"] = int(metrics.get("moves", 0)) + 1
 	grid_pos = pos
-	set_grid_visual_pos()
+	_visual_target_pos = Vector2(
+		grid_pos.x * TILE_SIZE + TILE_SIZE / 2.0,
+		grid_pos.y * TILE_SIZE + TILE_SIZE / 2.0
+	)
+	queue_redraw()
 	EventBus.emit_signal("agent_moved", agent_id, old_pos, pos)
 
 # -------------------------------------------------------------------------
@@ -98,6 +218,10 @@ func move_to(pos: Vector2i) -> void:
 func tick_status_effects() -> void:
 	if capture_cooldown_ticks > 0:
 		capture_cooldown_ticks -= 1
+	if cctv_alert_ticks > 0:
+		cctv_alert_ticks -= 1
+		if cctv_alert_ticks <= 0:
+			cctv_alert_target = Vector2i(-1, -1)
 
 	var to_remove: Array = []
 	for effect in _status_effects:
@@ -134,6 +258,39 @@ func has_status(name: String) -> bool:
 			return true
 	return false
 
+func remove_status(name: String) -> void:
+	var to_remove: Array[StatusEffect] = []
+	for e in _status_effects:
+		if e.effect_name == name:
+			to_remove.append(e)
+	for e in to_remove:
+		_remove_effect(e)
+
+func apply_temporary_slow(source: String, multiplier: float) -> void:
+	_temporary_slows[source] = clampf(multiplier, 0.1, 1.0)
+	_recompute_speed_multiplier()
+
+func clear_temporary_slow(source: String) -> void:
+	if _temporary_slows.has(source):
+		_temporary_slows.erase(source)
+	_recompute_speed_multiplier()
+
+func _recompute_speed_multiplier() -> void:
+	var mult: float = 1.0
+	for key in _temporary_slows.keys():
+		mult *= float(_temporary_slows[key])
+	movement_speed_multiplier = clampf(mult, 0.1, 1.0)
+
+func can_execute_movement_this_tick() -> bool:
+	if movement_speed_multiplier >= 0.999:
+		_movement_tick_accumulator = 0.0
+		return true
+	_movement_tick_accumulator += movement_speed_multiplier
+	if _movement_tick_accumulator >= 1.0:
+		_movement_tick_accumulator -= 1.0
+		return true
+	return false
+
 func status_summary() -> String:
 	if _status_effects.is_empty():
 		return "none"
@@ -163,6 +320,8 @@ func get_effective_speed() -> int:
 		speed = maxi(1, speed / 2)
 	if has_status("speed_boost"):
 		speed += get_speed_bonus()
+	if has_status("dog_pinned"):
+		speed = maxi(1, int(round(float(speed) * get_dog_pinned_speed_factor())))
 	return speed
 
 func get_speed_bonus() -> int:
@@ -170,6 +329,12 @@ func get_speed_bonus() -> int:
 		if e.effect_name == "speed_boost":
 			return e.speed_bonus
 	return 0
+
+func get_dog_pinned_speed_factor() -> float:
+	for e in _status_effects:
+		if e.effect_name == "dog_pinned":
+			return float(e.speed_factor)
+	return 1.0
 
 func tick_ability_cooldowns() -> void:
 	for ability in _abilities:
@@ -185,411 +350,238 @@ func on_exit_changed(new_exit: Vector2i) -> void:
 	_needs_replan = true
 	print("  [%s] replan flagged → new exit %s" % [_role, new_exit])
 
+func record_wait() -> void:
+	metrics["waits"] = int(metrics.get("waits", 0)) + 1
+
+func record_ability_use() -> void:
+	metrics["abilities"] = int(metrics.get("abilities", 0)) + 1
+
+func record_sprint() -> void:
+	metrics["sprints"] = int(metrics.get("sprints", 0)) + 1
+
 # =========================================================================
 # DRAWING  (pixel-art quality — all shapes, no sprites)
 # =========================================================================
 
 func _draw() -> void:
-	# Escaped prisoners (game already over) don't need to render.
-	# Captured-but-respawned prisoners are always active, so this only hides escapees.
 	if not is_active:
 		return
-
-	var T   := float(TILE_SIZE)
-	var bob := _bob * 1.5   # ±1.5 px vertical idle bob
-
-	# Colored glow ring — drawn first so it's behind everything
-	var glow_col: Color
+	var t := float(TILE_SIZE)
+	var bob: float = _bob * 1.6
+	var pulse: float = 0.5 + 0.5 * sin(float(Time.get_ticks_msec()) * 0.004)
+	var glow_col: Color = _role_glow_color()
+	if UserSettings != null and UserSettings.motion_trails_enabled:
+		_draw_motion_trails()
+	draw_circle(Vector2(0.0, bob * 0.20), t * 0.48, Color(glow_col.r, glow_col.g, glow_col.b, 0.10 + pulse * 0.04))
+	draw_circle(Vector2(0.0, bob * 0.20), t * 0.34, Color(glow_col.r, glow_col.g, glow_col.b, 0.06 + pulse * 0.03))
+	_draw_ellipse(Vector2(0.0, t * 0.31), Vector2(t * 0.32, t * 0.10), Color(0, 0, 0, 0.36))
+	_draw_ellipse(Vector2(0.0, t * 0.29), Vector2(t * 0.22, t * 0.05), Color(0, 0, 0, 0.12))
 	match _role:
-		"rusher_red":  glow_col = Color(0.94, 0.27, 0.27, 0.22)
-		"sneaky_blue": glow_col = Color(0.10, 0.95, 0.95, 0.20)
-		"police":      glow_col = Color(0.98, 0.82, 0.18, 0.18)
-		_:             glow_col = Color(1.0, 1.0, 1.0, 0.15)
-	draw_circle(Vector2(0.0, bob * 0.3), T * 0.40, glow_col)
-	draw_circle(Vector2(0.0, bob * 0.3), T * 0.30,
-		Color(glow_col.r, glow_col.g, glow_col.b, glow_col.a * 0.45))
-
-	# Drop shadow (ellipse beneath the agent)
-	_draw_ellipse(Vector2(0.0, T * 0.30), Vector2(T * 0.28, T * 0.08), Color(0, 0, 0, 0.35))
-
-	match _role:
-		"rusher_red":  _draw_rusher(bob)
-		"sneaky_blue": _draw_sneaky(bob)
-		"police":      _draw_police(bob)
-
+		"rusher_red":
+			_draw_rusher(bob)
+		"sneaky_blue":
+			_draw_sneaky(bob)
+		"police":
+			_draw_police(bob)
 	_draw_status_indicators(bob)
 
-# -------------------------------------------------------------------------
-# Role-specific draw routines
-# -------------------------------------------------------------------------
-
 func _draw_rusher(bob: float) -> void:
-	var T := float(TILE_SIZE)
-	var skin := Color(0.86, 0.66, 0.50)
-	var orange := Color(0.92, 0.43, 0.09)
-	var orange_dark := Color(0.62, 0.22, 0.04)
-	var outline := Color(0.08, 0.06, 0.04)
-	var boots := Color(0.12, 0.09, 0.06)
-	var ex := T * 0.06 * _facing_sign()
+	var t := float(TILE_SIZE)
+	var skin: Color = Color(0.67, 0.38, 0.22)
+	var orange: Color = Color(0.90, 0.28, 0.10)
+	var orange_dark: Color = Color(0.72, 0.18, 0.05)
+	var outline: Color = Color(0.08, 0.05, 0.04)
+	var boots: Color = Color(0.09, 0.08, 0.08)
+	var eye_shift: float = t * 0.025 * _facing_sign()
+	var sway: float = sin(float(Time.get_ticks_msec()) * 0.007) * 1.2
 
-	draw_rect(Rect2(-T*0.20, T*0.08+bob, T*0.16, T*0.25), outline)
-	draw_rect(Rect2( T*0.04, T*0.08+bob, T*0.16, T*0.25), outline)
-	draw_rect(Rect2(-T*0.17, T*0.10+bob, T*0.11, T*0.19), orange_dark)
-	draw_rect(Rect2( T*0.07, T*0.10+bob, T*0.11, T*0.19), orange_dark)
-	draw_rect(Rect2(-T*0.22, T*0.29+bob, T*0.19, T*0.08), boots)
-	draw_rect(Rect2( T*0.03, T*0.29+bob, T*0.19, T*0.08), boots)
+	_draw_block(Rect2(-t*0.21, t*0.03 + bob, t*0.17, t*0.27), orange_dark, outline)
+	_draw_block(Rect2( t*0.04, t*0.03 + bob, t*0.17, t*0.27), orange, outline)
+	_draw_block(Rect2(-t*0.23, t*0.29 + bob, t*0.20, t*0.08), boots, outline)
+	_draw_block(Rect2( t*0.03, t*0.29 + bob, t*0.20, t*0.08), boots, outline)
 
-	draw_rect(Rect2(-T*0.26, -T*0.17+bob, T*0.52, T*0.31), outline)
-	draw_rect(Rect2(-T*0.22, -T*0.14+bob, T*0.44, T*0.26), orange)
-	draw_line(Vector2(0, -T*0.14+bob), Vector2(0, T*0.12+bob), orange_dark, 2)
-	draw_rect(Rect2(-T*0.11, -T*0.10+bob, T*0.22, T*0.09), Color(1.0, 0.68, 0.26))
-	draw_rect(Rect2(-T*0.07, -T*0.085+bob, T*0.04, T*0.035), orange_dark)
-	draw_rect(Rect2(T*0.02, -T*0.085+bob, T*0.05, T*0.035), orange_dark)
+	_draw_block(Rect2(-t*0.31, -t*0.18 + bob, t*0.62, t*0.34), orange, outline)
+	_draw_block(Rect2(-t*0.16, -t*0.12 + bob, t*0.32, t*0.10), Color(0.99, 0.80, 0.68), outline)
+	draw_line(Vector2(0.0, -t*0.16 + bob), Vector2(0.0, t*0.14 + bob), Color(0.55, 0.12, 0.05), 2.0)
+	var font: Font = ThemeDB.fallback_font
+	if font != null:
+		draw_string(font, Vector2(-t*0.04, -t*0.02 + bob), "47", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(1, 1, 1, 0.88))
 
-	draw_rect(Rect2(-T*0.38, -T*0.13+bob, T*0.14, T*0.23), outline)
-	draw_rect(Rect2( T*0.24, -T*0.13+bob, T*0.14, T*0.23), outline)
-	draw_rect(Rect2(-T*0.35, -T*0.10+bob, T*0.10, T*0.17), orange)
-	draw_rect(Rect2( T*0.25, -T*0.10+bob, T*0.10, T*0.17), orange)
-	draw_rect(Rect2(-T*0.36, T*0.04+bob, T*0.11, T*0.08), skin)
-	draw_rect(Rect2( T*0.25, T*0.04+bob, T*0.11, T*0.08), skin)
+	_draw_block(Rect2(-t*0.39, -t*0.15 + bob, t*0.13, t*0.22), orange_dark, outline)
+	_draw_block(Rect2( t*0.26, -t*0.15 + bob, t*0.13, t*0.22), orange, outline)
+	draw_rect(Rect2(-t*0.40, t*0.04 + bob + sway, t*0.12, t*0.07), skin)
+	draw_rect(Rect2( t*0.28, t*0.04 + bob - sway, t*0.12, t*0.07), skin)
 
-	draw_rect(Rect2(-T*0.18, -T*0.44+bob, T*0.36, T*0.28), outline)
-	draw_rect(Rect2(-T*0.15, -T*0.40+bob, T*0.30, T*0.23), skin)
-	draw_rect(Rect2(-T*0.16, -T*0.45+bob, T*0.32, T*0.11), Color(0.17, 0.10, 0.06))
-	draw_rect(Rect2(-T*0.12, -T*0.27+bob, T*0.24, T*0.04), Color(0.52, 0.26, 0.14))
-	draw_rect(Rect2(ex - T*0.08, -T*0.32+bob, T*0.05, T*0.05), Color.WHITE)
-	draw_rect(Rect2(ex + T*0.04, -T*0.32+bob, T*0.05, T*0.05), Color.WHITE)
-	draw_rect(Rect2(ex - T*0.065 + T*0.01*_facing.x, -T*0.305+bob, T*0.025, T*0.025), outline)
-	draw_rect(Rect2(ex + T*0.055 + T*0.01*_facing.x, -T*0.305+bob, T*0.025, T*0.025), outline)
-
-func _draw_rusher_old(bob: float) -> void:
-	var T := float(TILE_SIZE)
-	# Legs
-	draw_rect(Rect2(-T*0.18, T*0.10+bob, T*0.14, T*0.22), Color(0.75, 0.35, 0.10))
-	draw_rect(Rect2( T*0.04, T*0.10+bob, T*0.14, T*0.22), Color(0.75, 0.35, 0.10))
-	# Boots
-	draw_rect(Rect2(-T*0.20, T*0.28+bob, T*0.16, T*0.07), Color(0.22, 0.15, 0.08))
-	draw_rect(Rect2( T*0.04, T*0.28+bob, T*0.16, T*0.07), Color(0.22, 0.15, 0.08))
-	# Torso — wide orange jumpsuit
-	draw_rect(Rect2(-T*0.22, -T*0.14+bob, T*0.44, T*0.26), Color(0.87, 0.42, 0.10))
-	# Prison number patch
-	draw_rect(Rect2(-T*0.08, -T*0.10+bob, T*0.16, T*0.09), Color(0.95, 0.60, 0.20, 0.60))
-	# Arms
-	draw_rect(Rect2(-T*0.36, -T*0.13+bob, T*0.15, T*0.20), Color(0.87, 0.42, 0.10))
-	draw_rect(Rect2( T*0.21, -T*0.13+bob, T*0.15, T*0.20), Color(0.87, 0.42, 0.10))
-	# Hands
-	draw_circle(Vector2(-T*0.30, bob),        T*0.07, Color(0.85, 0.65, 0.50))
-	draw_circle(Vector2( T*0.30, bob),        T*0.07, Color(0.85, 0.65, 0.50))
-	# Head
-	draw_circle(Vector2(0, -T*0.28+bob),      T*0.17, Color(0.85, 0.65, 0.50))
-	# Hair (dark skullcap)
-	draw_rect(Rect2(-T*0.14, -T*0.44+bob, T*0.28, T*0.13), Color(0.18, 0.12, 0.08))
-	# Eyes — offset based on facing direction
-	var ex := T * 0.06 * _facing_sign()
-	draw_circle(Vector2(ex - T*0.04, -T*0.28+bob), T*0.04, Color.WHITE)
-	draw_circle(Vector2(ex + T*0.04, -T*0.28+bob), T*0.04, Color.WHITE)
-	draw_circle(Vector2(ex - T*0.04 + T*0.01*_facing.x, -T*0.28+bob), T*0.02, Color(0.10, 0.10, 0.10))
-	draw_circle(Vector2(ex + T*0.04 + T*0.01*_facing.x, -T*0.28+bob), T*0.02, Color(0.10, 0.10, 0.10))
+	draw_rect(Rect2(-t*0.05, -t*0.24 + bob, t*0.10, t*0.06), skin)
+	_draw_ellipse(Vector2(0.0, -t*0.33 + bob), Vector2(t*0.19, t*0.17), Color(0.16, 0.09, 0.05))
+	_draw_ellipse(Vector2(0.0, -t*0.30 + bob), Vector2(t*0.17, t*0.15), skin)
+	draw_line(Vector2(-t*0.12, -t*0.36 + bob), Vector2(-t*0.03, -t*0.32 + bob), outline, 2.0)
+	draw_line(Vector2( t*0.12, -t*0.36 + bob), Vector2( t*0.03, -t*0.32 + bob), outline, 2.0)
+	draw_circle(Vector2(-t*0.06 + eye_shift, -t*0.31 + bob), 2.2, Color.WHITE)
+	draw_circle(Vector2( t*0.06 + eye_shift, -t*0.31 + bob), 2.2, Color.WHITE)
+	draw_circle(Vector2(-t*0.06 + eye_shift * 1.5, -t*0.31 + bob), 1.0, outline)
+	draw_circle(Vector2( t*0.06 + eye_shift * 1.5, -t*0.31 + bob), 1.0, outline)
+	draw_line(Vector2(-t*0.07, -t*0.24 + bob), Vector2(t*0.07, -t*0.23 + bob), Color(0.34, 0.10, 0.08), 2.0)
 
 func _draw_sneaky(bob: float) -> void:
-	var T := float(TILE_SIZE)
-	var cr := 1.0 if has_status("hidden") else 0.0
-	var cy := T * 0.08 * cr
-	var outline := Color(0.02, 0.07, 0.10)
-	var suit := Color(0.02, 0.28, 0.34)
-	var suit_hi := Color(0.07, 0.62, 0.70)
-	var cyan := Color(0.18, 1.00, 0.92)
-	var scarf := Color(0.95, 0.92, 0.30)
-	var skin := Color(0.70, 0.55, 0.43)
+	var t := float(TILE_SIZE)
+	var skin := Color(0.76, 0.55, 0.34)
+	var blue := Color(0.14, 0.56, 0.86)
+	var blue_dark := Color(0.07, 0.32, 0.66)
+	var outline := Color(0.05, 0.07, 0.10)
+	var shoes := Color(0.08, 0.10, 0.12)
+	var eye_shift := t * 0.022 * _facing_sign()
+	var sway := sin(float(Time.get_ticks_msec()) * 0.006 + 0.9) * 1.0
 
-	var leg_h := T * 0.20 * (1.0 - cr * 0.45)
-	draw_rect(Rect2(-T*0.18, T*0.08+bob+cy, T*0.13, leg_h + T*0.06), outline)
-	draw_rect(Rect2( T*0.05, T*0.08+bob+cy, T*0.13, leg_h + T*0.06), outline)
-	draw_rect(Rect2(-T*0.15, T*0.09+bob+cy, T*0.08, leg_h), suit)
-	draw_rect(Rect2( T*0.07, T*0.09+bob+cy, T*0.08, leg_h), suit)
-	draw_rect(Rect2(-T*0.18, T*0.25+bob+cy, T*0.15, T*0.07), outline)
-	draw_rect(Rect2( T*0.03, T*0.25+bob+cy, T*0.15, T*0.07), outline)
+	_draw_block(Rect2(-t*0.20, t*0.03 + bob, t*0.16, t*0.27), blue_dark, outline)
+	_draw_block(Rect2( t*0.04, t*0.03 + bob, t*0.16, t*0.27), blue, outline)
+	_draw_block(Rect2(-t*0.22, t*0.29 + bob, t*0.19, t*0.08), shoes, outline)
+	_draw_block(Rect2( t*0.03, t*0.29 + bob, t*0.19, t*0.08), shoes, outline)
 
+	_draw_block(Rect2(-t*0.28, -t*0.17 + bob, t*0.56, t*0.33), blue, outline)
 	draw_colored_polygon(PackedVector2Array([
-		Vector2(-T*0.22, -T*0.17+bob+cy),
-		Vector2( T*0.22, -T*0.17+bob+cy),
-		Vector2( T*0.18,  T*0.12+bob+cy),
-		Vector2(-T*0.18,  T*0.12+bob+cy),
-	]), outline)
-	draw_rect(Rect2(-T*0.18, -T*0.14+bob+cy, T*0.36, T*0.24), suit)
-	draw_rect(Rect2(-T*0.17, -T*0.12+bob+cy, T*0.08, T*0.20), suit_hi)
-	draw_rect(Rect2(T*0.09, -T*0.10+bob+cy, T*0.05, T*0.18), suit_hi)
-	draw_rect(Rect2(-T*0.03, -T*0.14+bob+cy, T*0.06, T*0.24), Color(0.00, 0.12, 0.16))
-	draw_rect(Rect2(-T*0.17, -T*0.01+bob+cy, T*0.34, T*0.05), scarf)
+		Vector2(-t*0.06, -t*0.17 + bob),
+		Vector2( t*0.06, -t*0.17 + bob),
+		Vector2( t*0.02, -t*0.05 + bob),
+		Vector2(-t*0.02, -t*0.05 + bob),
+	]), Color(0.96, 0.98, 1.00))
+	_draw_block(Rect2(-t*0.16, -t*0.02 + bob, t*0.14, t*0.07), blue_dark, outline)
 
-	draw_rect(Rect2(-T*0.32, -T*0.13+bob+cy, T*0.12, T*0.20), outline)
-	draw_rect(Rect2( T*0.20, -T*0.13+bob+cy, T*0.12, T*0.20), outline)
-	draw_rect(Rect2(-T*0.29, -T*0.10+bob+cy, T*0.08, T*0.15), suit)
-	draw_rect(Rect2( T*0.21, -T*0.10+bob+cy, T*0.08, T*0.15), suit)
-	draw_rect(Rect2(-T*0.31, T*0.04+bob+cy, T*0.09, T*0.06), skin)
-	draw_rect(Rect2( T*0.22, T*0.04+bob+cy, T*0.09, T*0.06), skin)
+	_draw_block(Rect2(-t*0.38, -t*0.14 + bob + sway, t*0.12, t*0.20), blue_dark, outline)
+	_draw_block(Rect2( t*0.26, -t*0.14 + bob - sway, t*0.12, t*0.20), blue, outline)
+	draw_rect(Rect2(-t*0.39, t*0.02 + bob + sway, t*0.11, t*0.07), skin)
+	draw_rect(Rect2( t*0.28, t*0.02 + bob - sway, t*0.11, t*0.07), skin)
 
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(0, -T*0.49+bob+cy),
-		Vector2(T*0.22, -T*0.38+bob+cy),
-		Vector2(T*0.18, -T*0.18+bob+cy),
-		Vector2(0, -T*0.11+bob+cy),
-		Vector2(-T*0.18, -T*0.18+bob+cy),
-		Vector2(-T*0.22, -T*0.38+bob+cy),
-	]), outline)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(0, -T*0.45+bob+cy),
-		Vector2(T*0.16, -T*0.35+bob+cy),
-		Vector2(T*0.13, -T*0.21+bob+cy),
-		Vector2(0, -T*0.16+bob+cy),
-		Vector2(-T*0.13, -T*0.21+bob+cy),
-		Vector2(-T*0.16, -T*0.35+bob+cy),
-	]), suit)
-	draw_rect(Rect2(-T*0.15, -T*0.34+bob+cy, T*0.30, T*0.08), cyan)
-	draw_rect(Rect2(-T*0.03 + T*0.04*_facing_sign(), -T*0.325+bob+cy, T*0.05, T*0.035), outline)
-	draw_line(Vector2(-T*0.18, -T*0.23+bob+cy), Vector2(T*0.18, -T*0.23+bob+cy), cyan, 1)
-
-	if cr > 0.5:
-		draw_arc(Vector2(0, bob + cy), T*0.40, 0.0, TAU, 32,
-			Color(0.37, 0.78, 1.0, 0.45 * cr), 2)
-		draw_rect(Rect2(-T*0.27, -T*0.20+bob+cy, T*0.54, T*0.45), Color(0.37, 0.78, 1.0, 0.07))
-
-func _draw_sneaky_old(bob: float) -> void:
-	var T  := float(TILE_SIZE)
-	var cr := 1.0 if has_status("hidden") else 0.0   # crouch factor
-	var cy := T * 0.08 * cr                           # vertical crouch offset
-	# Legs (shrink when crouched)
-	var leg_h := T * 0.20 * (1.0 - cr * 0.40)
-	draw_rect(Rect2(-T*0.16, T*0.08+bob+cy, T*0.12, leg_h), Color(0.18, 0.28, 0.55))
-	draw_rect(Rect2( T*0.04, T*0.08+bob+cy, T*0.12, leg_h), Color(0.18, 0.28, 0.55))
-	# Torso (slim, dark blue — slightly brighter for visibility)
-	draw_rect(Rect2(-T*0.18, -T*0.16+bob+cy, T*0.36, T*0.26), Color(0.20, 0.32, 0.62))
-	# Arms
-	draw_rect(Rect2(-T*0.30, -T*0.14+bob+cy, T*0.13, T*0.18), Color(0.20, 0.32, 0.62))
-	draw_rect(Rect2( T*0.18, -T*0.14+bob+cy, T*0.13, T*0.18), Color(0.20, 0.32, 0.62))
-	# Hood / balaclava — subtle bright outline for contrast against dark floor
-	draw_circle(Vector2(0, -T*0.30+bob+cy), T*0.16 + 1.5, Color(0.30, 0.50, 0.80, 0.50))
-	draw_circle(Vector2(0, -T*0.30+bob+cy), T*0.16, Color(0.12, 0.18, 0.36))
-	# Eye slit (bright cyan-blue, wider for readability)
-	draw_rect(Rect2(-T*0.11, -T*0.33+bob+cy, T*0.22, T*0.055), Color(0.45, 0.75, 1.00, 1.0))
-	# Stealth shimmer ring when hidden
-	if cr > 0.5:
-		draw_arc(Vector2(0, bob + cy), T*0.38, 0.0, TAU, 32,
-			Color(0.37, 0.65, 0.98, 0.35 * cr), 2)
+	draw_rect(Rect2(-t*0.05, -t*0.24 + bob, t*0.10, t*0.06), skin)
+	_draw_ellipse(Vector2(0.0, -t*0.33 + bob), Vector2(t*0.18, t*0.16), Color(0.15, 0.08, 0.03))
+	_draw_ellipse(Vector2(0.0, -t*0.30 + bob), Vector2(t*0.16, t*0.14), skin)
+	draw_circle(Vector2(-t*0.05 + eye_shift, -t*0.31 + bob), 2.0, Color.WHITE)
+	draw_circle(Vector2( t*0.05 + eye_shift, -t*0.31 + bob), 2.0, Color.WHITE)
+	draw_circle(Vector2(-t*0.05 + eye_shift * 1.4, -t*0.31 + bob), 0.9, outline)
+	draw_circle(Vector2( t*0.05 + eye_shift * 1.4, -t*0.31 + bob), 0.9, outline)
+	draw_line(Vector2(-t*0.08, -t*0.25 + bob), Vector2(t*0.08, -t*0.25 + bob), Color(0.43, 0.21, 0.12), 1.5)
+	draw_line(Vector2(-t*0.09, -t*0.35 + bob), Vector2(-t*0.02, -t*0.34 + bob), outline, 1.5)
+	draw_line(Vector2(t*0.09, -t*0.35 + bob), Vector2(t*0.02, -t*0.34 + bob), outline, 1.5)
 
 func _draw_police(bob: float) -> void:
-	var T := float(TILE_SIZE)
-	var outline := Color(0.04, 0.05, 0.10)
-	var navy := Color(0.02, 0.07, 0.20)
-	var blue := Color(0.08, 0.20, 0.52)
-	var blue_hi := Color(0.42, 0.63, 1.00)
-	var cap_white := Color(0.88, 0.92, 0.96)
-	var skin := Color(0.85, 0.70, 0.55)
-	var gold := Color(0.96, 0.82, 0.18)
+	var t := float(TILE_SIZE)
+	var skin := Color(0.78, 0.52, 0.30)
+	var navy := Color(0.12, 0.19, 0.42)
+	var navy_dark := Color(0.07, 0.12, 0.24)
+	var vest := Color(0.05, 0.08, 0.17)
+	var outline := Color(0.05, 0.05, 0.08)
+	var boots := Color(0.06, 0.06, 0.08)
+	var eye_shift := t * 0.020 * _facing_sign()
+	var sway := sin(float(Time.get_ticks_msec()) * 0.006 + 2.0) * 1.0
 
-	draw_rect(Rect2(-T*0.19, T*0.08+bob, T*0.14, T*0.25), outline)
-	draw_rect(Rect2( T*0.05, T*0.08+bob, T*0.14, T*0.25), outline)
-	draw_rect(Rect2(-T*0.16, T*0.10+bob, T*0.09, T*0.19), navy)
-	draw_rect(Rect2( T*0.07, T*0.10+bob, T*0.09, T*0.19), navy)
-	draw_rect(Rect2(-T*0.21, T*0.29+bob, T*0.18, T*0.08), outline)
-	draw_rect(Rect2( T*0.03, T*0.29+bob, T*0.18, T*0.08), outline)
+	_draw_block(Rect2(-t*0.19, t*0.04 + bob, t*0.15, t*0.26), navy_dark, outline)
+	_draw_block(Rect2( t*0.04, t*0.04 + bob, t*0.15, t*0.26), navy, outline)
+	_draw_block(Rect2(-t*0.21, t*0.29 + bob, t*0.18, t*0.08), boots, outline)
+	_draw_block(Rect2( t*0.03, t*0.29 + bob, t*0.18, t*0.08), boots, outline)
 
-	draw_rect(Rect2(-T*0.25, -T*0.18+bob, T*0.50, T*0.32), outline)
-	draw_rect(Rect2(-T*0.21, -T*0.15+bob, T*0.42, T*0.26), blue)
-	draw_rect(Rect2(-T*0.03, -T*0.15+bob, T*0.06, T*0.26), navy)
-	draw_rect(Rect2(-T*0.21, T*0.03+bob, T*0.42, T*0.07), navy)
-	draw_rect(Rect2(-T*0.10, -T*0.13+bob, T*0.20, T*0.12), gold)
-	draw_rect(Rect2(-T*0.06, -T*0.10+bob, T*0.12, T*0.06), Color(0.98, 0.93, 0.45))
-	draw_rect(Rect2(-T*0.17, -T*0.13+bob, T*0.06, T*0.09), blue_hi)
-	draw_rect(Rect2(T*0.13, -T*0.13+bob, T*0.05, T*0.09), Color(0.95, 0.95, 0.95))
+	_draw_block(Rect2(-t*0.27, -t*0.17 + bob, t*0.54, t*0.34), navy, outline)
+	_draw_block(Rect2(-t*0.22, -t*0.13 + bob, t*0.44, t*0.24), vest, outline)
+	draw_rect(Rect2(-t*0.20, -t*0.01 + bob, t*0.40, t*0.05), Color(0.03, 0.05, 0.08))
+	draw_circle(Vector2(-t*0.10, -t*0.09 + bob), 2.0, Color(1.00, 0.84, 0.24))
+	draw_rect(Rect2(-t*0.13, -t*0.04 + bob, t*0.10, t*0.06), Color(0.04, 0.07, 0.11))
+	draw_rect(Rect2( t*0.03, -t*0.04 + bob, t*0.10, t*0.06), Color(0.04, 0.07, 0.11))
 
-	draw_rect(Rect2(-T*0.36, -T*0.14+bob, T*0.14, T*0.22), outline)
-	draw_rect(Rect2( T*0.22, -T*0.14+bob, T*0.14, T*0.22), outline)
-	draw_rect(Rect2(-T*0.33, -T*0.11+bob, T*0.09, T*0.16), blue)
-	draw_rect(Rect2( T*0.24, -T*0.11+bob, T*0.09, T*0.16), blue)
-	draw_rect(Rect2(T*0.33, -T*0.08+bob, T*0.05, T*0.28), outline)
-	draw_rect(Rect2(T*0.345, -T*0.07+bob, T*0.025, T*0.25), Color(0.05, 0.05, 0.06))
-	draw_rect(Rect2(-T*0.34, T*0.03+bob, T*0.10, T*0.08), skin)
-	draw_rect(Rect2( T*0.24, T*0.03+bob, T*0.10, T*0.08), skin)
+	_draw_block(Rect2(-t*0.37, -t*0.14 + bob + sway, t*0.12, t*0.22), navy_dark, outline)
+	_draw_block(Rect2( t*0.25, -t*0.14 + bob - sway, t*0.12, t*0.22), navy, outline)
+	draw_rect(Rect2(-t*0.38, t*0.04 + bob + sway, t*0.11, t*0.07), skin)
+	draw_rect(Rect2( t*0.27, t*0.04 + bob - sway, t*0.11, t*0.07), skin)
 
-	draw_rect(Rect2(-T*0.18, -T*0.43+bob, T*0.36, T*0.27), outline)
-	draw_rect(Rect2(-T*0.15, -T*0.39+bob, T*0.30, T*0.21), skin)
-	draw_rect(Rect2(-T*0.22, -T*0.49+bob, T*0.44, T*0.15), cap_white)
-	draw_rect(Rect2(-T*0.19, -T*0.47+bob, T*0.38, T*0.07), navy)
-	draw_rect(Rect2(-T*0.30, -T*0.37+bob, T*0.60, T*0.08), outline)
-	draw_rect(Rect2(-T*0.23, -T*0.36+bob, T*0.46, T*0.04), cap_white)
-	draw_rect(Rect2(-T*0.17, -T*0.46+bob, T*0.34, T*0.05), blue_hi)
-	draw_rect(Rect2(-T*0.04, -T*0.47+bob, T*0.08, T*0.05), gold)
-	draw_rect(Rect2(-T*0.10, -T*0.30+bob, T*0.06, T*0.05), Color.WHITE)
-	draw_rect(Rect2( T*0.05, -T*0.30+bob, T*0.06, T*0.05), Color.WHITE)
-	draw_rect(Rect2(-T*0.08 + T*0.01*_facing.x, -T*0.285+bob, T*0.025, T*0.025), outline)
-	draw_rect(Rect2( T*0.07 + T*0.01*_facing.x, -T*0.285+bob, T*0.025, T*0.025), outline)
-	draw_rect(Rect2(-T*0.07, -T*0.22+bob, T*0.14, T*0.035), Color(0.48, 0.25, 0.17))
-
-func _draw_police_old(bob: float) -> void:
-	var T := float(TILE_SIZE)
-	# Legs (dark navy trousers)
-	draw_rect(Rect2(-T*0.17, T*0.09+bob, T*0.13, T*0.23), Color(0.10, 0.16, 0.38))
-	draw_rect(Rect2( T*0.04, T*0.09+bob, T*0.13, T*0.23), Color(0.10, 0.16, 0.38))
-	# Boots
-	draw_rect(Rect2(-T*0.19, T*0.28+bob, T*0.15, T*0.07), Color(0.08, 0.08, 0.12))
-	draw_rect(Rect2( T*0.04, T*0.28+bob, T*0.15, T*0.07), Color(0.08, 0.08, 0.12))
-	# Torso (police blue shirt)
-	draw_rect(Rect2(-T*0.21, -T*0.15+bob, T*0.42, T*0.26), Color(0.23, 0.51, 0.96))
-	# Badge (gold rect + dark outline)
-	draw_rect(Rect2(-T*0.06, -T*0.12+bob, T*0.12, T*0.08), Color(0.95, 0.80, 0.15))
-	draw_rect(Rect2(-T*0.06, -T*0.12+bob, T*0.12, T*0.08), Color(0, 0, 0, 0.30), false)
-	# Arms
-	draw_rect(Rect2(-T*0.34, -T*0.14+bob, T*0.14, T*0.20), Color(0.23, 0.51, 0.96))
-	draw_rect(Rect2( T*0.20, -T*0.14+bob, T*0.14, T*0.20), Color(0.23, 0.51, 0.96))
-	# Hands
-	draw_circle(Vector2(-T*0.28, T*0.01+bob), T*0.07, Color(0.85, 0.70, 0.55))
-	draw_circle(Vector2( T*0.28, T*0.01+bob), T*0.07, Color(0.85, 0.70, 0.55))
-	# Head
-	draw_circle(Vector2(0, -T*0.29+bob), T*0.16, Color(0.85, 0.70, 0.55))
-	# Peaked cap — dome + brim
-	draw_rect(Rect2(-T*0.20, -T*0.44+bob, T*0.40, T*0.12), Color(0.10, 0.16, 0.38))
-	draw_rect(Rect2(-T*0.24, -T*0.36+bob, T*0.48, T*0.05), Color(0.08, 0.12, 0.28))
-	# Eyes (small white dots)
-	draw_circle(Vector2(-T*0.05, -T*0.29+bob), T*0.03, Color.WHITE)
-	draw_circle(Vector2( T*0.05, -T*0.29+bob), T*0.03, Color.WHITE)
-
-# -------------------------------------------------------------------------
-# Status-effect indicators (drawn above head)
-# -------------------------------------------------------------------------
+	draw_rect(Rect2(-t*0.05, -t*0.24 + bob, t*0.10, t*0.06), skin)
+	_draw_ellipse(Vector2(0.0, -t*0.33 + bob), Vector2(t*0.18, t*0.16), Color(0.10, 0.05, 0.02))
+	_draw_ellipse(Vector2(0.0, -t*0.30 + bob), Vector2(t*0.16, t*0.14), skin)
+	_draw_block(Rect2(-t*0.19, -t*0.42 + bob, t*0.38, t*0.07), Color(0.07, 0.10, 0.18), outline)
+	draw_circle(Vector2(-t*0.05 + eye_shift, -t*0.31 + bob), 2.0, Color.WHITE)
+	draw_circle(Vector2( t*0.05 + eye_shift, -t*0.31 + bob), 2.0, Color.WHITE)
+	draw_circle(Vector2(-t*0.05 + eye_shift * 1.4, -t*0.31 + bob), 0.9, outline)
+	draw_circle(Vector2( t*0.05 + eye_shift * 1.4, -t*0.31 + bob), 0.9, outline)
+	draw_line(Vector2(-t*0.08, -t*0.35 + bob), Vector2(-t*0.02, -t*0.33 + bob), outline, 1.7)
+	draw_line(Vector2(t*0.08, -t*0.35 + bob), Vector2(t*0.02, -t*0.33 + bob), outline, 1.7)
+	draw_line(Vector2(-t*0.05, -t*0.24 + bob), Vector2(t*0.05, -t*0.24 + bob), Color(0.34, 0.18, 0.10), 1.6)
 
 func _draw_status_indicators(bob: float) -> void:
-	var T    := float(TILE_SIZE)
-	var htop := -T * 0.52 + bob   # just above the tallest head point
-	var font := ThemeDB.fallback_font
+	var y := -float(TILE_SIZE) * 0.58 + bob
+	var x := -float(TILE_SIZE) * 0.22
+	for effect in _status_effects:
+		var col := Color(1.0, 1.0, 1.0, 0.95)
+		match effect.effect_name:
+			"detected": col = Color(1.0, 0.35, 0.20, 0.95)
+			"hidden": col = Color(0.30, 0.95, 0.90, 0.95)
+			"stunned": col = Color(1.0, 0.86, 0.22, 0.95)
+			"exhausted": col = Color(0.90, 0.74, 0.12, 0.95)
+			"dog_pinned": col = Color(1.00, 0.52, 0.12, 0.95)
+		draw_rect(Rect2(x, y, 8.0, 8.0), col)
+		draw_rect(Rect2(x, y, 8.0, 8.0), Color(0, 0, 0, 0.45), false)
+		x += 10.0
+	if camera_detections > 0:
+		draw_arc(Vector2(0.0, -float(TILE_SIZE) * 0.62 + bob), float(TILE_SIZE) * 0.18, PI * 1.1, PI * 1.9, 12, Color(0.40, 1.0, 0.92, 0.65), 2.0)
 
-	# Burning — orange flame triangle above head
-	if has_status("burning"):
-		var pts := PackedVector2Array([
-			Vector2(0,        htop - T*0.12),
-			Vector2(-T*0.07,  htop),
-			Vector2( T*0.07,  htop),
-		])
-		draw_colored_polygon(pts, Color(1.00, 0.45, 0.05))
-		var pts2 := PackedVector2Array([
-			Vector2(0,        htop - T*0.08),
-			Vector2(-T*0.03,  htop - T*0.01),
-			Vector2( T*0.03,  htop - T*0.01),
-		])
-		draw_colored_polygon(pts2, Color(1.00, 0.82, 0.15))
+func _draw_motion_trails() -> void:
+	if _trail_points.is_empty():
+		return
+	var n: int = _trail_points.size()
+	for i in range(n):
+		var p: Vector2 = _trail_points[i]
+		var rel: Vector2 = p - global_position
+		var k: float = float(i + 1) / float(n)
+		var a: float = 0.04 + k * 0.12
+		var glow: Color = _role_glow_color()
+		_draw_ellipse(rel + Vector2(0.0, 8.0), Vector2(3.0 + k * 5.0, 1.6 + k * 1.8), Color(0, 0, 0, a * 0.75))
+		draw_circle(rel, 1.5 + k * 2.2, Color(glow.r, glow.g, glow.b, a * 0.55))
 
-	# Stunned — 3 yellow circles in an arc
-	if has_status("stunned"):
-		for i in range(3):
-			var a := -PI * 0.30 + float(i) * PI * 0.30
-			draw_circle(
-				Vector2(cos(a) * T*0.16, htop + sin(a) * T*0.04 + T*0.02),
-				T * 0.04, Color(1.00, 0.90, 0.10)
-			)
+func _draw_block(rect: Rect2, fill: Color, outline: Color) -> void:
+	draw_rect(rect, outline)
+	var inner := rect.grow(-2.0)
+	if inner.size.x > 0.0 and inner.size.y > 0.0:
+		draw_rect(inner, fill)
 
-	# Hidden — dashed blue ring around agent
-	if has_status("hidden"):
-		var ring_r := T * 0.42
-		var segs   := 12
-		for i in range(segs):
-			if i % 2 == 0:
-				draw_arc(Vector2(0, bob), ring_r,
-					float(i) / segs * TAU,
-					float(i + 1) / segs * TAU,
-					4, Color(0.37, 0.65, 0.98, 0.80), 2)
+func _role_glow_color() -> Color:
+	match _role:
+		"rusher_red":
+			return Color(0.96, 0.28, 0.26)
+		"sneaky_blue":
+			return Color(0.18, 0.76, 0.96)
+		"police":
+			return Color(1.00, 0.84, 0.24)
+		_:
+			return Color.WHITE
 
-	# Detected — flashing orange ! (toggles at ~2 Hz)
-	if has_status("detected"):
-		if fmod(Time.get_ticks_msec() * 0.001, 0.50) < 0.25:
-			if font != null:
-				draw_string(font, Vector2(-T*0.06, htop + T*0.02), "!",
-					HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1.00, 0.50, 0.10))
-
-	# SpeedBoost — green motion lines behind agent in facing direction
-	if has_status("speed_boost"):
-		var dir := Vector2(float(-_facing.x), float(-_facing.y))
-		if dir == Vector2.ZERO:
-			dir = Vector2(-1.0, 0.0)
-		var perp := Vector2(-dir.y, dir.x)
-		for i in range(3):
-			var base   := Vector2(0, bob) + dir * T * (0.20 + float(i) * 0.10)
-			var spread := 1.0 - float(i) * 0.25
-			draw_line(
-				base - perp * T * 0.08 * spread,
-				base + perp * T * 0.08 * spread,
-				Color(0.29, 0.85, 0.50, 0.70 - float(i) * 0.20), 2
-			)
-
-	# Role label — always drawn above the agent so they're identifiable
-	if font != null:
-		var label: String
-		var label_col: Color
-		match _role:
-			"rusher_red":
-				label = "R"
-				label_col = Color(1.0, 0.55, 0.15)
-			"sneaky_blue":
-				label = "B"
-				label_col = Color(0.18, 1.0, 0.92)
-			"police":
-				label = "P"
-				label_col = Color(1.0, 0.86, 0.24)
-			_:
-				label = "?"
-				label_col = Color.WHITE
-		# Small dark backdrop for readability
-		draw_rect(Rect2(-T*0.12, htop - T*0.22, T*0.24, T*0.18),
-			Color(0.05, 0.05, 0.10, 0.70))
-		draw_string(font, Vector2(-T*0.08, htop - T*0.06), label,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 13, label_col)
-
-# -------------------------------------------------------------------------
-# Drawing helpers
-# -------------------------------------------------------------------------
-
-func _draw_ellipse(center: Vector2, radii: Vector2, color: Color, segments: int = 16) -> void:
+func _draw_ellipse(center: Vector2, radii: Vector2, color: Color) -> void:
 	var pts := PackedVector2Array()
-	for i in range(segments):
-		var a := float(i) / float(segments) * TAU
+	for i in range(20):
+		var a := TAU * float(i) / 20.0
 		pts.append(center + Vector2(cos(a) * radii.x, sin(a) * radii.y))
 	draw_colored_polygon(pts, color)
 
 func _facing_sign() -> float:
-	if _facing.x > 0: return  1.0
-	if _facing.x < 0: return -1.0
-	return 0.0
+	if _facing == Vector2i.ZERO:
+		return 1.0
+	if absf(float(_facing.x)) >= absf(float(_facing.y)):
+		return 1.0 if _facing.x >= 0 else -1.0
+	return 1.0
 
-# =========================================================================
-# TRANSIENT EFFECTS (EventBus callbacks → spawn at scene root)
-# =========================================================================
-
-func _on_status_changed_fx(id: int, effect: String, added: bool) -> void:
-	if id != agent_id or not added:
+func _on_camera_detection(camera_id: int, id: int, visible: bool, _tile: Vector2i, _detail: Dictionary) -> void:
+	if id != agent_id or not visible:
 		return
-	match effect:
-		"detected": _spawn_effect(TransientEffect.Type.ALERT)
-		"burning":  _spawn_effect(TransientEffect.Type.FLAME)
-		"stunned":  _spawn_effect(TransientEffect.Type.SPARKLE)
+	camera_detections += 1
+	# total_camera_detections is accumulated in respawn() to avoid double-counting.
+	print("  [%s] spotted by CCTV #%d" % [_role, camera_id])
 
-func _on_captured_fx(id: int) -> void:
-	if id == agent_id:
-		_spawn_effect(TransientEffect.Type.CAPTURE)
+func _on_status_changed_fx(_id: int, _effect: String, _added: bool) -> void:
+	pass
 
-func _on_escaped_fx(id: int) -> void:
-	if id == agent_id:
-		_spawn_effect(TransientEffect.Type.ESCAPE)
+func _on_captured_fx(_id: int) -> void:
+	pass
 
-func _on_fire_fx(id: int, _tile: Vector2i) -> void:
-	if id == agent_id:
-		_spawn_effect(TransientEffect.Type.FLAME)
+func _on_escaped_fx(_id: int) -> void:
+	pass
 
-func _on_action_chosen_fx(id: int, action: String) -> void:
-	if id == agent_id and action == "brawl":
-		_spawn_effect(TransientEffect.Type.SMOKE)
+func _on_fire_fx(_id: int, _tile: Vector2i) -> void:
+	pass
 
-func _spawn_effect(type: int) -> void:
-	if not is_inside_tree():
-		return
-	var effect := TransientEffect.new()
-	get_tree().current_scene.add_child(effect)
-	effect.activate(type, global_position)
+func _on_action_chosen_fx(_id: int, _action: String) -> void:
+	pass

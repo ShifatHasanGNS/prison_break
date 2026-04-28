@@ -37,6 +37,14 @@ func get_exits() -> Array[Vector2i]:
 func get_time_remaining() -> float:
 	return maxf(0.0, _rotation_interval - _timer)
 
+func ticks_until_next_rotation(tick_seconds: float = 0.25) -> int:
+	## Returns how many simulation ticks remain until the exit rotates.
+	## Uses TICK_SECONDS = 0.25 by default (matches simulation_loop.gd).
+	var remaining: float = get_time_remaining()
+	if remaining <= 0.0:
+		return 0
+	return int(ceilf(remaining / maxf(tick_seconds, 0.001)))
+
 func is_active_exit(pos: Vector2i) -> bool:
 	return pos == _active_exit
 

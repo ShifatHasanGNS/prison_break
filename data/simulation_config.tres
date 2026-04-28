@@ -1,3 +1,17 @@
-[gd_resource type="Resource" format=3]
+[gd_resource type="Resource" script_class="SimulationConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://data/simulation_config.gd" id="1"]
 
 [resource]
+script = ExtResource("1")
+match_duration_seconds = 60.0
+tick_seconds = 0.25
+max_captures_before_elimination = 3
+danger_weight = 2.0
+wait_stamina_bonus = 8.0
+move_stamina_cost = 1.0
+sneak_stamina_cost = 2.0
+alert_on_bark = 0.8
+alert_on_fire = 0.65
+alert_decay_per_second = 0.1
+alert_camera_scale = 0.65

@@ -33,6 +33,9 @@ func tick(agents: Array) -> void:
 	for agent in agents:
 		if not agent.get("is_active"):
 			continue
+		# Police are not harmed by fire — they know the prison layout
+		if agent.get("_role") == "police":
+			continue
 		var pos: Vector2i = agent.get("grid_pos")
 		if pos in _fire_tiles:
 			var id: int = agent.get("agent_id")
@@ -42,7 +45,7 @@ func tick(agents: Array) -> void:
 			if not _agents_on_fire.has(id):
 				EventBus.emit_signal("agent_entered_fire", id, pos)
 				# Apply alert (Detected) effect for FIRE_ALERT_DURATION ticks
-				var alert_effect := EffectDetected.new()
+				var alert_effect: EffectDetected = EffectDetected.new()
 				alert_effect.refresh(FIRE_ALERT_DURATION)
 				agent.apply_effect(alert_effect)
 				print("  [%s] entered fire at %s!" % [agent.get("_role"), pos])
@@ -82,62 +85,52 @@ func _process(_delta: float) -> void:
 	queue_redraw()
 
 func _draw() -> void:
-	if _fire_tiles.is_empty():
-		return
-	var t_ms := float(Time.get_ticks_msec())
-	var T    := float(TILE_SIZE)
-
+	var t_ms: float = float(Time.get_ticks_msec())
+	var t: float = float(TILE_SIZE)
 	for ft: Vector2i in _fire_tiles:
-		_draw_fire_tile(ft, T, t_ms)
+		var rx := float(ft.x * TILE_SIZE)
+		var ry := float(ft.y * TILE_SIZE)
+		var pulse := 0.5 + 0.5 * sin(t_ms * 0.004 + float(ft.x + ft.y))
+		var center := Vector2(rx + t * 0.5, ry + t * 0.58)
 
-func _draw_fire_tile(ft: Vector2i, T: float, t_ms: float) -> void:
-	var rx := float(ft.x * TILE_SIZE)
-	var ry := float(ft.y * TILE_SIZE)
+		for i in range(5):
+			var radius := t * (0.28 + float(i) * 0.10) + pulse * 2.0
+			draw_circle(center, radius, Color(1.00, 0.36, 0.04, 0.05 - float(i) * 0.008))
+		draw_rect(Rect2(rx, ry, t, t), Color(0.18, 0.03, 0.02, 0.92))
+		draw_rect(Rect2(rx + 4.0, ry + 4.0, t - 8.0, t - 8.0), Color(0.35, 0.07, 0.03, 0.22 + pulse * 0.08))
 
-	# --- Outer glow (drawn first, slightly larger than tile) ---
-	draw_rect(Rect2(rx - 3, ry - 3, T + 6, T + 6),
-		Color(0.90, 0.40, 0.05, 0.12))
+		for s in range(4):
+			var smoke_x := rx + t * (0.20 + float(s) * 0.18)
+			var smoke_y := ry + t * (0.24 - 0.08 * sin(t_ms * 0.0018 + float(s)))
+			draw_circle(Vector2(smoke_x, smoke_y), 4.0 + float(s), Color(0.12, 0.12, 0.12, 0.12))
 
-	# --- Dark red base ---
-	draw_rect(Rect2(rx, ry, T, T), Color(0.45, 0.08, 0.02, 0.92))
+		var h1 := t * clampf(0.54 + 0.18 * sin(t_ms * 0.0038), 0.28, 0.78)
+		var h2 := t * clampf(0.72 + 0.14 * sin(t_ms * 0.0027 + 1.4), 0.36, 0.88)
+		var h3 := t * clampf(0.58 + 0.16 * sin(t_ms * 0.0049 + 2.8), 0.28, 0.80)
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(rx + t * 0.08, ry + t),
+			Vector2(rx + t * 0.34, ry + t),
+			Vector2(rx + t * 0.18, ry + t - h1),
+		]), Color(0.96, 0.40, 0.06))
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(rx + t * 0.24, ry + t),
+			Vector2(rx + t * 0.78, ry + t),
+			Vector2(rx + t * 0.50, ry + t - h2),
+		]), Color(1.00, 0.72, 0.10))
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(rx + t * 0.36, ry + t),
+			Vector2(rx + t * 0.64, ry + t),
+			Vector2(rx + t * 0.50, ry + t - h2 * 0.56),
+		]), Color(1.00, 0.95, 0.55, 0.82))
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(rx + t * 0.66, ry + t),
+			Vector2(rx + t * 0.94, ry + t),
+			Vector2(rx + t * 0.80, ry + t - h3),
+		]), Color(0.96, 0.38, 0.05))
 
-	# --- Flame tongue heights (sin-driven per-tile flicker) ---
-	var lh := T * clampf(0.52 + 0.16 * sin(t_ms * 0.0038),           0.28, 0.72)
-	var ch := T * clampf(0.68 + 0.16 * sin(t_ms * 0.0029 + 1.6),     0.38, 0.88)
-	var rh := T * clampf(0.58 + 0.14 * sin(t_ms * 0.0051 + 3.1),     0.30, 0.76)
-
-	# Left tongue — orange triangle
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(rx + T * 0.04, ry + T),
-		Vector2(rx + T * 0.32, ry + T),
-		Vector2(rx + T * 0.16, ry + T - lh),
-	]), Color(0.95, 0.42, 0.05))
-
-	# Centre tongue — bright yellow-orange, tallest
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(rx + T * 0.24, ry + T),
-		Vector2(rx + T * 0.76, ry + T),
-		Vector2(rx + T * 0.50, ry + T - ch),
-	]), Color(1.00, 0.72, 0.10))
-	# Bright inner highlight on centre tongue
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(rx + T * 0.34, ry + T),
-		Vector2(rx + T * 0.66, ry + T),
-		Vector2(rx + T * 0.50, ry + T - ch * 0.55),
-	]), Color(1.00, 0.95, 0.50, 0.70))
-
-	# Right tongue — orange
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(rx + T * 0.68, ry + T),
-		Vector2(rx + T * 0.94, ry + T),
-		Vector2(rx + T * 0.80, ry + T - rh),
-	]), Color(0.95, 0.42, 0.05))
-
-	# --- Ember particles (4 per tile, each toggled by time slot) ---
-	var em_x := [T * 0.18, T * 0.38, T * 0.58, T * 0.78]
-	for i in range(4):
-		var phase := fmod(t_ms * 0.001 + float(i) * 0.62, 1.0)
-		if phase > 0.45:
-			var ey := ry + T * (0.20 + 0.18 * sin(t_ms * 0.0022 + float(i) * 1.4))
-			draw_rect(Rect2(rx + em_x[i] - 1.0, ey - 1.0, 2.5, 2.5),
-				Color(1.00, 0.88, 0.20))
+		for i in range(5):
+			var phase := fmod(t_ms * 0.001 + float(i) * 0.43, 1.0)
+			if phase > 0.40:
+				var ex := rx + t * (0.14 + float(i) * 0.15)
+				var ey := ry + t * (0.16 + 0.20 * sin(t_ms * 0.002 + float(i) * 1.2))
+				draw_rect(Rect2(ex - 1.0, ey - 1.0, 2.5, 2.5), Color(1.00, 0.88, 0.22, 0.88))

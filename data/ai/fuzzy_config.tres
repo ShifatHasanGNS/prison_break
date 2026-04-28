@@ -4,9 +4,23 @@
 
 [resource]
 script = ExtResource("1")
+# Bug 1 fix: widened near zone and lowered medium_low to eliminate dead zone at d=4-5.
+# NEAR_ZERO 4.5→5.5, MEDIUM_LOW 4.0→3.5
 dist_close = 3.0
-dist_medium = 8.0
-dist_far = 15.0
+dist_near_zero = 5.5
+dist_medium_low = 3.5
+dist_medium_peak = 7.0
+dist_medium_high = 11.0
+dist_far_zero = 7.0
+dist_far = 12.0
+alert_suspicious = 0.35
+alert_alarmed = 0.50
+w_chase = 1.25
+w_investigate = 1.0
+w_intercept = 1.0
+w_patrol = 1.0
+alert_chase_weight = 0.80
+alert_chase_base_bias = 0.40
 vis_low = 0.2
 vis_medium = 0.5
 vis_high = 0.8
@@ -16,7 +30,3 @@ noise_loud = 8.0
 threat_low = 2.0
 threat_medium = 5.0
 threat_high = 8.0
-w_patrol = 1.0
-w_investigate = 1.2
-w_chase = 1.5
-w_intercept = 1.3

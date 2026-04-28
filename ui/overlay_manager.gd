@@ -54,6 +54,36 @@ func _toggle(overlay: Node2D, overlay_name: String) -> void:
 	EventBus.emit_signal("overlay_toggled", overlay_name, overlay.visible)
 	print("Overlay '%s' → %s" % [overlay_name, "ON" if overlay.visible else "OFF"])
 
+func toggle_overlay_by_name(overlay_name: String) -> bool:
+	var overlay: Node2D = _overlay_from_name(overlay_name)
+	if overlay == null:
+		return false
+	_toggle(overlay, overlay_name)
+	return overlay.visible
+
+func set_overlay_visible(overlay_name: String, is_visible: bool) -> void:
+	var overlay: Node2D = _overlay_from_name(overlay_name)
+	if overlay == null:
+		return
+	if overlay.visible == is_visible:
+		return
+	_toggle(overlay, overlay_name)
+
+func is_overlay_visible(overlay_name: String) -> bool:
+	var overlay: Node2D = _overlay_from_name(overlay_name)
+	return overlay != null and overlay.visible
+
+func _overlay_from_name(overlay_name: String) -> Node2D:
+	match overlay_name:
+		"path":
+			return _path_overlay
+		"vision":
+			return _vision_overlay
+		"danger":
+			return _danger_overlay
+		_:
+			return null
+
 func _hide_all() -> void:
 	for pair in [
 		[_path_overlay,   "path"],

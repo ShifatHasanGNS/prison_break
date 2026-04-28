@@ -1,6 +1,9 @@
 extends AIController
 class_name MctsController
 
+const SIM_CATCH_RADIUS_TILES: int = 2
+const GUARD_PRESSURE_ZONE_TILES: int = 5
+
 var _config: MctsConfig = null
 var _grid: Node = null
 var _cost_map: RefCounted = null
@@ -123,14 +126,21 @@ func _uct_value(total_score: float, visit_count: int, parent_visits: int) -> flo
 func _rollout(start_pos: Vector2i, exit: Vector2i, agent: Node2D) -> float:
 	var pos: Vector2i = start_pos
 	var previous_pos: Vector2i = agent.grid_pos
-	var police_positions: Array[Vector2i] = get_police_positions(_all_agents)
+	# FIX #1: Copy positions so we can advance them without mutating the source.
+	# Police positions are now stepped toward the prisoner after every rollout
+	# step, making the simulation adversarial instead of "frozen police."
+	var police_positions: Array[Vector2i] = get_police_positions(_all_agents).duplicate()
 
 	for _step in range(_config.rollout_depth):
-		if pos == exit:
+		# Bug 4 fix: simulate exit rotation so rollout sees future exit positions.
+		# ExitRotator rotates every ~15 ticks (TICK_SECONDS=0.25, interval 5-7s → 20-28 ticks).
+		# Using _simulate_exit_at_tick lets the rollout reward paths toward the correct exit.
+		var sim_exit: Vector2i = _simulate_exit_at_tick(_step)
+		if pos == sim_exit:
 			return 1.0
 
 		for pp: Vector2i in police_positions:
-			if manhattan(pos, pp) <= 1:
+			if manhattan(pos, pp) <= SIM_CATCH_RADIUS_TILES:
 				return 0.0
 
 		var neighbours: Array[Vector2i] = _grid.get_neighbours(pos)
@@ -139,11 +149,16 @@ func _rollout(start_pos: Vector2i, exit: Vector2i, agent: Node2D) -> float:
 
 		var next_pos: Vector2i
 		if SimRandom.randf() < _config.low_danger_bias:
-			next_pos = _pick_best_rollout_step(pos, previous_pos, neighbours, exit, police_positions)
+			next_pos = _pick_best_rollout_step(pos, previous_pos, neighbours, sim_exit, police_positions)
 		else:
 			next_pos = SimRandom.choice(neighbours)
 		previous_pos = pos
 		pos = next_pos
+
+		# FIX #1: Advance every police position one Manhattan step toward the
+		# prisoner's current position so the rollout models actual pursuit.
+		for i in range(police_positions.size()):
+			police_positions[i] = _step_toward(police_positions[i], pos)
 
 	var dist_exit: float = float(manhattan(pos, exit))
 	var min_police_dist: float = 999.0
@@ -152,7 +167,58 @@ func _rollout(start_pos: Vector2i, exit: Vector2i, agent: Node2D) -> float:
 
 	var exit_score: float = 1.0 / (1.0 + dist_exit * 0.1)
 	var safety_score: float = minf(min_police_dist / 10.0, 1.0)
-	return (exit_score + safety_score) * 0.5
+	if min_police_dist <= float(GUARD_PRESSURE_ZONE_TILES):
+		safety_score -= (float(GUARD_PRESSURE_ZONE_TILES) - min_police_dist + 1.0) * 0.09
+	safety_score = clampf(safety_score, 0.0, 1.0)
+	# MINOR #4 FIX: Penalise rollout paths that would drain stamina to near-zero.
+	# Each rollout step costs 1 stamina; if remaining stamina can't cover the steps
+	# taken, apply a proportional penalty so the MCTS avoids exhaustion routes.
+	var stamina_ratio: float = clampf(agent.stamina / maxf(agent.stats.max_stamina if agent.stats != null else 70.0, 1.0), 0.0, 1.0)
+	var stamina_penalty: float = 0.0
+	if stamina_ratio < 0.25:
+		stamina_penalty = (0.25 - stamina_ratio) * 0.6
+
+	# Exit rotation timing penalty: if the current exit will rotate before the
+	# prisoner (at rollout end position) could reach it, discount exit_score.
+	# This prevents the MCTS from over-valuing paths that point at a soon-to-vanish exit.
+	# _simulate_exit_at_tick already re-routes rollout steps to the correct future exit,
+	# but the final dist_exit is measured against the START exit; halve it if unreachable.
+	var rotation_penalty: float = 0.0
+	if _exit_rotator != null:
+		var ticks_left: int = _exit_rotator.ticks_until_next_rotation()
+		if ticks_left > 0 and int(dist_exit) > ticks_left:
+			rotation_penalty = exit_score * 0.50  # halve exit contribution — exit will rotate first
+
+	return (exit_score + safety_score) * 0.5 - stamina_penalty - rotation_penalty
+
+# Bug 4 fix: predict which exit will be active 'step' ticks into the future.
+# ExitRotator uses a random interval of 5-7 seconds; at TICK_SECONDS=0.25 that
+# is 20-28 ticks per rotation. We use the midpoint (24 ticks) as the period.
+# When the exit_rotator is available we also check time remaining so the first
+# rotation is predicted correctly even mid-cycle.
+const _SIM_ROTATION_PERIOD_TICKS: int = 24
+
+func _simulate_exit_at_tick(step: int) -> Vector2i:
+	if _exit_rotator == null:
+		return Vector2i(-1, -1)
+	var exits: Array[Vector2i] = _exit_rotator.get_exits()
+	if exits.size() < 2:
+		return _exit_rotator.get_active_exit()
+	# Estimate ticks until next rotation from time_remaining
+	var ticks_until_rotation: int = _exit_rotator.ticks_until_next_rotation()
+	if ticks_until_rotation <= 0:
+		ticks_until_rotation = _SIM_ROTATION_PERIOD_TICKS
+	# How many full rotations occur before this step?
+	var rotations: int = 0
+	if step >= ticks_until_rotation:
+		rotations = 1 + (step - ticks_until_rotation) / _SIM_ROTATION_PERIOD_TICKS
+	# Cycle through exits array (skip current exit on each rotation)
+	var active: Vector2i = _exit_rotator.get_active_exit()
+	var current_idx: int = exits.find(active)
+	if current_idx < 0:
+		return active
+	var idx: int = (current_idx + rotations) % exits.size()
+	return exits[idx]
 
 func _pick_best_rollout_step(current: Vector2i, previous: Vector2i, neighbours: Array[Vector2i], exit: Vector2i, police_positions: Array[Vector2i]) -> Vector2i:
 	var best: Vector2i = neighbours[0]
@@ -168,7 +234,10 @@ func _pick_best_rollout_step(current: Vector2i, previous: Vector2i, neighbours: 
 		else:
 			score -= danger * 0.08
 		for pp: Vector2i in police_positions:
-			score += minf(float(manhattan(n, pp)), 8.0) * 0.08
+			var pd: float = float(manhattan(n, pp))
+			score += minf(pd, 8.0) * 0.08
+			if pd <= float(GUARD_PRESSURE_ZONE_TILES):
+				score -= (float(GUARD_PRESSURE_ZONE_TILES) - pd + 1.0) * 0.14
 		score += SimRandom.randf() * 0.02
 		if score > best_score:
 			best_score = score
@@ -185,20 +254,64 @@ func _pick_lowest_danger(neighbours: Array[Vector2i]) -> Vector2i:
 			best = n
 	return best
 
+# FIX #1 helper: advance one Manhattan step from 'from' toward 'to'.
+func _step_toward(from: Vector2i, to: Vector2i) -> Vector2i:
+	if from == to:
+		return from
+	var dx: int = to.x - from.x
+	var dy: int = to.y - from.y
+	# Move along the axis with the larger difference first (Manhattan heuristic).
+	if absi(dx) >= absi(dy):
+		return from + Vector2i(sign(dx), 0)
+	return from + Vector2i(0, sign(dy))
+
 func _emit_decision(agent: Node2D, candidates: Array, chosen_pos: Vector2i, root_visits: int) -> void:
-	var top3: Array = []
+	var top_candidates: Array = []
 	var chosen_in_top: bool = false
-	for i in range(mini(candidates.size(), 3)):
-		top3.append(candidates[i])
+	var chosen_visits: int = 0
+	var chosen_decision_score: float = 0.0
+	for i in range(mini(candidates.size(), 5)):
+		top_candidates.append(candidates[i])
 		if candidates[i].get("pos", Vector2i(-1, -1)) == chosen_pos:
 			chosen_in_top = true
+			chosen_visits = int(candidates[i].get("visits", 0))
+			chosen_decision_score = float(candidates[i].get("decision_score", 0.0))
 	if not chosen_in_top:
 		for c in candidates:
 			if c.get("pos", Vector2i(-1, -1)) == chosen_pos:
-				if top3.size() >= 3:
-					top3[2] = c
+				if top_candidates.size() >= 5:
+					top_candidates[4] = c
 				else:
-					top3.append(c)
+					top_candidates.append(c)
+				chosen_visits = int(c.get("visits", 0))
+				chosen_decision_score = float(c.get("decision_score", 0.0))
 				break
-	var chosen_dict: Dictionary = {"pos": chosen_pos}
-	EventBus.emit_signal("mcts_decision", agent.agent_id, root_visits, top3, chosen_dict)
+	var chosen_dict: Dictionary = {
+		"pos": chosen_pos,
+		"visits": chosen_visits,
+		"decision_score": chosen_decision_score,
+		"reason": _describe_rollout_reason(agent, chosen_pos),
+	}
+	EventBus.emit_signal("mcts_decision", agent.agent_id, root_visits, top_candidates, chosen_dict)
+
+func _describe_rollout_reason(agent: Node2D, chosen_pos: Vector2i) -> String:
+	if _exit_rotator == null:
+		return "safest rollout"
+	var exit_tile: Vector2i = _exit_rotator.get_active_exit()
+	var before_exit: int = manhattan(agent.grid_pos, exit_tile)
+	var after_exit: int = manhattan(chosen_pos, exit_tile)
+	var police_dist: int = 99
+	for police_pos: Vector2i in get_police_positions(_all_agents):
+		police_dist = min(police_dist, manhattan(chosen_pos, police_pos))
+	var danger: float = 0.0
+	if _cost_map != null:
+		danger = float(_cost_map.get_cost(chosen_pos))
+		if danger >= 1e30:
+			danger = 50.0
+	if police_dist <= 2:
+		return "danger avoided"
+	if after_exit < before_exit and danger <= 3.0:
+		return "exit route"
+	if danger <= 1.5:
+		return "safest rollout"
+	return "balanced rollout"

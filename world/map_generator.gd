@@ -1,7 +1,7 @@
 extends Node
 class_name MapGenerator
 
-const WIDTH: int = 20
+const WIDTH: int = 28
 const HEIGHT: int = 20
 
 # --- Public API ---
@@ -50,18 +50,48 @@ func _try_generate() -> Dictionary:
 
 	# Step 6: Agent spawns — prisoners in bottom half, police in top area
 	# Passing exits ensures a minimum distance check filters candidates.
-	var red_spawn:    Vector2i = _find_spawn(tiles, 1,  8,  12, 17, exits)
-	var blue_spawn:   Vector2i = _find_spawn(tiles, 11, 17, 12, 17, exits)
-	var police_spawn: Vector2i = _find_spawn(tiles, 6,  13, 2,  8,  [])
+	var inner_left: int = 1
+	var inner_right: int = WIDTH - 2
+	var center_x: int = WIDTH / 2
+	var prisoner_y_min: int = maxi(2, int(floor(float(HEIGHT) * 0.60)))
+	var prisoner_y_max: int = HEIGHT - 3
+	var police_y_min: int = 2
+	var police_y_max: int = maxi(police_y_min, int(floor(float(HEIGHT) * 0.42)))
+
+	var red_spawn: Vector2i = _find_spawn(
+		tiles,
+		inner_left,
+		maxi(inner_left, center_x - 3),
+		prisoner_y_min,
+		prisoner_y_max,
+		exits
+	)
+	var blue_spawn: Vector2i = _find_spawn(
+		tiles,
+		mini(inner_right, center_x + 3),
+		inner_right,
+		prisoner_y_min,
+		prisoner_y_max,
+		exits
+	)
+	var police_spawn: Vector2i = _find_spawn(
+		tiles,
+		maxi(inner_left, center_x - 4),
+		mini(inner_right, center_x + 4),
+		police_y_min,
+		police_y_max,
+		[]
+	)
 
 	if red_spawn.x < 0 or blue_spawn.x < 0 or police_spawn.x < 0:
 		return {}
 
-	# Step 7: Hazards
+	# Step 7: Hazards + CCTV
 	var spawns: Array[Vector2i] = [red_spawn, blue_spawn, police_spawn]
 	var fire_tiles: Array[Vector2i] = _place_fire(tiles, spawns, exits)
 	var door_tiles: Array[Vector2i] = _place_doors(tiles, exits)
 	var dog_waypoints: Array[Vector2i] = _find_dog_waypoints(tiles, spawns, exits)
+	var camera_tiles: Array = _place_cameras(tiles, spawns, exits, fire_tiles, door_tiles)
 
 	# Step 8: Visual variants
 	_assign_variants(tiles)
@@ -80,6 +110,7 @@ func _try_generate() -> Dictionary:
 		"dog_waypoints": dog_waypoints,
 		"fire_tiles": fire_tiles,
 		"door_tiles": door_tiles,
+		"camera_tiles": camera_tiles,
 	}
 
 # --- Room carving ---
@@ -143,17 +174,25 @@ func _carve_corridor(tiles: Dictionary, from: Vector2i, to: Vector2i) -> void:
 ## Uses fewer strips, more gaps, and short blockers so paths stay readable.
 func _place_interior_walls(tiles: Dictionary) -> void:
 	# Horizontal partitions with broad gaps.
-	var h_rows: Array[int] = [6, 13]
+	var row_a: int = clampi(int(round(float(HEIGHT) * 0.32)), 3, HEIGHT - 4)
+	var row_b: int = clampi(int(round(float(HEIGHT) * 0.68)), 4, HEIGHT - 3)
+	if row_b <= row_a:
+		row_b = mini(HEIGHT - 3, row_a + 3)
+	var h_rows: Array[int] = [row_a, row_b]
 	for row_y: int in h_rows:
 		_place_wall_strip_h(tiles, row_y, 2, WIDTH - 2, 4)
 
 	# Vertical partitions with broad gaps.
-	var v_cols: Array[int] = [7, 13]
+	var col_a: int = clampi(int(round(float(WIDTH) * 0.34)), 3, WIDTH - 4)
+	var col_b: int = clampi(int(round(float(WIDTH) * 0.66)), 4, WIDTH - 3)
+	if col_b <= col_a:
+		col_b = mini(WIDTH - 3, col_a + 4)
+	var v_cols: Array[int] = [col_a, col_b]
 	for col_x: int in v_cols:
 		_place_wall_strip_v(tiles, col_x, 2, HEIGHT - 2, 4)
 
 	# Additional short horizontal walls between main strips
-	var extra_h: int = SimRandom.randi_range(2, 4)
+	var extra_h: int = SimRandom.randi_range(3, 5)
 	for _i in range(extra_h):
 		var ry: int = SimRandom.randi_range(3, HEIGHT - 4)
 		var rx: int = SimRandom.randi_range(2, WIDTH - 7)
@@ -161,7 +200,7 @@ func _place_interior_walls(tiles: Dictionary) -> void:
 		_place_wall_strip_h(tiles, ry, rx, rx + rlen, 2)
 
 	# Additional short vertical walls
-	var extra_v: int = SimRandom.randi_range(2, 4)
+	var extra_v: int = SimRandom.randi_range(3, 5)
 	for _i in range(extra_v):
 		var cx2: int = SimRandom.randi_range(3, WIDTH - 4)
 		var cy2: int = SimRandom.randi_range(2, HEIGHT - 7)
@@ -302,14 +341,16 @@ func _place_exits(tiles: Dictionary) -> Array[Vector2i]:
 	var num_exits: int = SimRandom.randi_range(2, 3)
 	var exits: Array[Vector2i] = []
 
-	# Exits only on top and side edges — NOT bottom (prisoners spawn in bottom half rows 12–17).
-	# A bottom-edge exit would be only 2–7 tiles from prisoner spawns.
+	# Exits are placed on the top edge and the UPPER portion of side edges only.
+	# Police spawns in rows 2–8 (top area), prisoners spawn in rows 12–17 (bottom area).
+	# Limiting side-edge exits to y <= 7 keeps exits firmly in police territory,
+	# so prisoners must travel the full map length to reach them.
 	var candidates: Array[Vector2i] = []
-	for x in range(3, WIDTH - 3):
-		candidates.append(Vector2i(x, 0))              # top edge only
-	for y in range(3, HEIGHT - 3):
-		candidates.append(Vector2i(0, y))              # left edge
-		candidates.append(Vector2i(WIDTH - 1, y))     # right edge
+	for x in range(2, WIDTH - 2):
+		candidates.append(Vector2i(x, 0))              # top edge
+	for y in range(2, 8):
+		candidates.append(Vector2i(0, y))              # left edge — upper third only
+		candidates.append(Vector2i(WIDTH - 1, y))      # right edge — upper third only
 	SimRandom.shuffle(candidates)
 
 	for candidate: Vector2i in candidates:
@@ -429,11 +470,19 @@ func _place_doors(tiles: Dictionary, exits: Array[Vector2i]) -> Array[Vector2i]:
 func _find_dog_waypoints(tiles: Dictionary, spawns: Array[Vector2i], exits: Array[Vector2i] = []) -> Array[Vector2i]:
 	# Pick one floor tile per map quadrant (roughly), forming a patrol loop.
 	# Exit tiles are excluded so the dog never patrols onto them.
+	var left_min: int = 2
+	var left_max: int = maxi(left_min, (WIDTH / 2) - 1)
+	var right_min: int = mini(WIDTH - 3, left_max + 1)
+	var right_max: int = WIDTH - 3
+	var top_min: int = 2
+	var top_max: int = maxi(top_min, (HEIGHT / 2) - 1)
+	var bot_min: int = mini(HEIGHT - 3, top_max + 1)
+	var bot_max: int = HEIGHT - 3
 	var quadrants: Array = [
-		[2, 9, 2, 9],    # top-left
-		[10, 17, 2, 9],  # top-right
-		[10, 17, 10, 17],# bottom-right
-		[2, 9, 10, 17],  # bottom-left
+		[left_min, left_max, top_min, top_max],      # top-left
+		[right_min, right_max, top_min, top_max],    # top-right
+		[right_min, right_max, bot_min, bot_max],    # bottom-right
+		[left_min, left_max, bot_min, bot_max],      # bottom-left
 	]
 	var waypoints: Array[Vector2i] = []
 
@@ -500,9 +549,10 @@ func _validate(
 				return false
 
 	# Minimum exit distance for prisoners (game must last long enough)
-	const MIN_PRISONER_EXIT_DIST: int = 8
-	var red_dist: int  = _min_dist_to_exits(tiles, red_spawn,  exits)
-	var blue_dist: int = _min_dist_to_exits(tiles, blue_spawn, exits)
+	const MIN_PRISONER_EXIT_DIST: int = 10
+	var red_dist: int    = _min_dist_to_exits(tiles, red_spawn,    exits)
+	var blue_dist: int   = _min_dist_to_exits(tiles, blue_spawn,   exits)
+	var police_dist: int = _min_dist_to_exits(tiles, police_spawn, exits)
 	if red_dist  < MIN_PRISONER_EXIT_DIST: return false
 	if blue_dist < MIN_PRISONER_EXIT_DIST: return false
 
@@ -510,8 +560,13 @@ func _validate(
 	if absi(red_dist - blue_dist) > 10:
 		return false
 
+	# Police MUST be closer to exits than both prisoners — this is the key
+	# territorial advantage. Exits are placed in police territory (rows 0–7).
+	if police_dist >= red_dist or police_dist >= blue_dist:
+		return false
+
 	# Police equidistant to both prisoners (±10 tiles)
-	var police_to_red: int = _astar_check(tiles, police_spawn, red_spawn).size()
+	var police_to_red: int  = _astar_check(tiles, police_spawn, red_spawn).size()
 	var police_to_blue: int = _astar_check(tiles, police_spawn, blue_spawn).size()
 	if absi(police_to_red - police_to_blue) > 10:
 		return false
@@ -679,10 +734,145 @@ func _walkable_neighbour_count(tiles: Dictionary, pos: Vector2i) -> int:
 func _in_bounds(pos: Vector2i) -> bool:
 	return pos.x >= 0 and pos.x < WIDTH and pos.y >= 0 and pos.y < HEIGHT
 
+func _place_cameras(tiles: Dictionary, spawns: Array, exits: Array, fire_tiles: Array, door_tiles: Array) -> Array:
+	var reserved: Array[Vector2i] = []
+	for s in spawns:
+		reserved.append(s as Vector2i)
+	for e in exits:
+		reserved.append(e as Vector2i)
+	for f in fire_tiles:
+		reserved.append(f as Vector2i)
+	for d in door_tiles:
+		reserved.append(d as Vector2i)
+
+	var candidates: Array = []
+	var dirs: Array[Vector2i] = [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]
+	for y in range(2, HEIGHT - 2):
+		for x in range(2, WIDTH - 2):
+			var pos := Vector2i(x, y)
+			if not _walkable_at(tiles, pos):
+				continue
+			if _too_close_to_any(pos, reserved, 3):
+				continue
+			var best_dir := Vector2i.ZERO
+			var best_depth := 0
+			for d in dirs:
+				var depth := _camera_corridor_depth(tiles, pos, d)
+				if depth > best_depth:
+					best_depth = depth
+					best_dir = d
+			if best_depth < 5:
+				continue
+			candidates.append({
+				"pos": pos,
+				"facing": best_dir,
+				"range": mini(7, maxi(5, best_depth)),
+				"fov_deg": 78.0,
+				"rotates": true,
+				"sweep_interval": SimRandom.randi_range(2, 4),
+			})
+
+	SimRandom.shuffle(candidates)
+	var picked: Array = []
+	const TARGET_CAMERA_COUNT: int = 3
+	for c in candidates:
+		var pos: Vector2i = c["pos"]
+		var too_close := false
+		for other in picked:
+			if _manhattan(pos, other["pos"]) < 5:
+				too_close = true
+				break
+		if too_close:
+			continue
+		picked.append(c)
+		if picked.size() >= TARGET_CAMERA_COUNT:
+			break
+
+	if picked.size() < TARGET_CAMERA_COUNT:
+		var fallback_positions: Array[Vector2i] = [Vector2i(4, 4), Vector2i(WIDTH - 5, 4), Vector2i(4, HEIGHT - 5), Vector2i(WIDTH - 5, HEIGHT - 5)]
+		for fp in fallback_positions:
+			if not _walkable_at(tiles, fp):
+				continue
+			var crowded: bool = false
+			for reserved_pos in reserved:
+				if _manhattan(fp, reserved_pos) <= 2:
+					crowded = true
+					break
+			if crowded:
+				continue
+			var duplicate: bool = false
+			for other in picked:
+				if other["pos"] == fp:
+					duplicate = true
+					break
+			if duplicate:
+				continue
+			picked.append({
+				"pos": fp,
+				"facing": Vector2i.RIGHT,
+				"range": 6,
+				"fov_deg": 78.0,
+				"rotates": true,
+				"sweep_interval": 3,
+			})
+			if picked.size() >= TARGET_CAMERA_COUNT:
+				break
+
+	if picked.size() < TARGET_CAMERA_COUNT:
+		for y in range(1, HEIGHT - 1):
+			for x in range(1, WIDTH - 1):
+				var p: Vector2i = Vector2i(x, y)
+				if not _walkable_at(tiles, p):
+					continue
+				var taken: bool = false
+				for other in picked:
+					if other["pos"] == p:
+						taken = true
+						break
+				if taken:
+					continue
+				picked.append({
+					"pos": p,
+					"facing": Vector2i.RIGHT,
+					"range": 6,
+					"fov_deg": 78.0,
+					"rotates": true,
+					"sweep_interval": 3,
+				})
+				if picked.size() >= TARGET_CAMERA_COUNT:
+					break
+			if picked.size() >= TARGET_CAMERA_COUNT:
+				break
+	return picked
+
+func _camera_corridor_depth(tiles: Dictionary, pos: Vector2i, dir: Vector2i) -> int:
+	var depth := 0
+	for i in range(1, 9):
+		var probe := pos + dir * i
+		if not _in_bounds(probe) or not _walkable_at(tiles, probe):
+			break
+		depth += 1
+	return depth
+
+func _too_close_to_any(pos: Vector2i, others: Array, dist: int) -> bool:
+	for other in others:
+		if _manhattan(pos, other as Vector2i) <= dist:
+			return true
+	return false
+
+func _manhattan(a: Vector2i, b: Vector2i) -> int:
+	return absi(a.x - b.x) + absi(a.y - b.y)
+
+
 # --- Fallback map (guaranteed valid) ---
 
 func _fallback_map() -> Dictionary:
 	var tiles: Dictionary = {}
+	var center_x: int = WIDTH / 2
+	var left_x: int = 3
+	var right_x: int = WIDTH - 4
+	var spawn_y: int = HEIGHT - 4
+	var police_y: int = 2
 
 	# All floor
 	for y in range(HEIGHT):
@@ -698,8 +888,8 @@ func _fallback_map() -> Dictionary:
 		tiles[Vector2i(WIDTH - 1, y)] = _make_wall()
 
 	# Two loose dividers with multiple gaps.
-	var divider_14_gaps: Array[int] = [4, 8, 13, 16]
-	var divider_9_gaps: Array[int] = [3, 7, 12, 16]
+	var divider_14_gaps: Array[int] = [3, center_x - 4, center_x + 3, WIDTH - 4]
+	var divider_9_gaps: Array[int] = [2, center_x - 5, center_x + 2, WIDTH - 5]
 	SimRandom.shuffle(divider_14_gaps)
 	SimRandom.shuffle(divider_9_gaps)
 	divider_14_gaps.resize(SimRandom.randi_range(3, 4))
@@ -714,26 +904,29 @@ func _fallback_map() -> Dictionary:
 
 	# Short vertical walls add shape without forcing single-file movement.
 	var blockers: Array = [
-		[Vector2i(10, 15), Vector2i(10, 16)],
+		[Vector2i(center_x, 15), Vector2i(center_x, 16)],
 		[Vector2i(5, 10), Vector2i(5, 11)],
-		[Vector2i(14, 10), Vector2i(14, 11)],
-		[Vector2i(9, 3), Vector2i(9, 4), Vector2i(9, 5)],
-		[Vector2i(16, 4), Vector2i(16, 5), Vector2i(16, 6)],
+		[Vector2i(WIDTH - 6, 10), Vector2i(WIDTH - 6, 11)],
+		[Vector2i(center_x - 1, 3), Vector2i(center_x - 1, 4), Vector2i(center_x - 1, 5)],
+		[Vector2i(WIDTH - 4, 4), Vector2i(WIDTH - 4, 5), Vector2i(WIDTH - 4, 6)],
 		[Vector2i(3, 6), Vector2i(4, 6), Vector2i(5, 6)],
-		[Vector2i(12, 3), Vector2i(13, 3), Vector2i(14, 3)],
+		[Vector2i(center_x + 2, 3), Vector2i(center_x + 3, 3), Vector2i(center_x + 4, 3)],
 	]
 	SimRandom.shuffle(blockers)
 	for i in range(SimRandom.randi_range(4, blockers.size())):
 		for pos: Vector2i in blockers[i]:
 			tiles[pos] = _make_wall()
 
-	# Exits on top and side edges only (NOT bottom — prisoners are at bottom)
+	# Exits on top edge and upper side edges only — police spawns at (10,2) so all
+	# exits are within 5–12 tiles of police, vs 12–18 tiles for prisoners at bottom.
 	var exit_candidates: Array[Vector2i] = [
 		Vector2i(5,  0),
-		Vector2i(14, 0),
-		Vector2i(0,  9),
-		Vector2i(WIDTH - 1, 6),
-		Vector2i(WIDTH - 1, 12),
+		Vector2i(WIDTH - 6, 0),
+		Vector2i(center_x, 0),
+		Vector2i(0,  4),
+		Vector2i(WIDTH - 1, 4),
+		Vector2i(0,  7),
+		Vector2i(WIDTH - 1, 7),
 	]
 	SimRandom.shuffle(exit_candidates)
 	var exits: Array[Vector2i] = []
@@ -753,12 +946,13 @@ func _fallback_map() -> Dictionary:
 		"valid": true,
 		"tiles": tiles,
 		# Prisoners in bottom corners — minimum ~16 tiles from nearest exit via dividers
-		"red_spawn":    Vector2i(3,  16),
-		"blue_spawn":   Vector2i(16, 16),
+		"red_spawn":    Vector2i(left_x,  spawn_y),
+		"blue_spawn":   Vector2i(right_x, spawn_y),
 		# Police in top-center — near exits, blocks prisoner routes
-		"police_spawn": Vector2i(10, 2),
+		"police_spawn": Vector2i(center_x, police_y),
 		"exits": exits,
-		"dog_waypoints": _find_dog_waypoints(tiles, [Vector2i(3, 16), Vector2i(16, 16), Vector2i(10, 2)], exits),
-		"fire_tiles":    _place_fire(tiles, [Vector2i(3, 16), Vector2i(16, 16), Vector2i(10, 2)], exits),
+		"dog_waypoints": _find_dog_waypoints(tiles, [Vector2i(left_x, spawn_y), Vector2i(right_x, spawn_y), Vector2i(center_x, police_y)], exits),
+		"fire_tiles":    _place_fire(tiles, [Vector2i(left_x, spawn_y), Vector2i(right_x, spawn_y), Vector2i(center_x, police_y)], exits),
 		"door_tiles":    [],
+		"camera_tiles": _place_cameras(tiles, [Vector2i(left_x, spawn_y), Vector2i(right_x, spawn_y), Vector2i(center_x, police_y)], exits, [], []),
 	}

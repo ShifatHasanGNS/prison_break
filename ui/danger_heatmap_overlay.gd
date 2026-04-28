@@ -9,11 +9,13 @@ const TILE_SIZE : int   = 48
 const MAX_DANGER: float = 12.0   # value at which colour saturates to full red
 
 var _danger_map: DangerMap = null
+var _grid: GridEngine = null
 
 # -------------------------------------------------------------------------
 
-func setup(danger_map: DangerMap) -> void:
+func setup(danger_map: DangerMap, grid: GridEngine = null) -> void:
 	_danger_map = danger_map
+	_grid = grid
 	EventBus.danger_map_updated.connect(_on_danger_map_updated)
 
 # -------------------------------------------------------------------------
@@ -54,7 +56,8 @@ func _draw_legend() -> void:
 	if font == null:
 		return
 	var lx : float = 4.0
-	var ly : float = float(20 * TILE_SIZE) + 8.0   # just below row 19
+	var map_h_tiles: int = _grid.get_height() if _grid != null else 20
+	var ly : float = float(map_h_tiles * TILE_SIZE) + 8.0
 	var lw : float = 160.0
 	var lh : float = 10.0
 
